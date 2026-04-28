@@ -1,4 +1,4 @@
-import logging
+import logging, argparse
 
 from telegram.ext import (
     ApplicationBuilder,
@@ -6,6 +6,20 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     filters,
+)
+
+arg_parser = argparse.ArgumentParser(description="FOO")
+arg_parser.add_argument("--debug", nargs="?", const="INFO", help="Debug Level. (DEBUG/INFO/WARNING(default)/ERROR)")
+
+args = arg_parser.parse_args()
+log_level = args.debug if args.debug else "WARNING"
+if log_level.upper() not in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+    print(f"VALUE OF \"--debug\" NOT SUPPORT TO BE '{log_level}'. EXIT.")
+    sys.exit(1)
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=getattr(logging, log_level.upper())
 )
 
 from ban import (
