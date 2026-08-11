@@ -8,8 +8,7 @@ Telegram 投稿/审稿机器人，基于 Telegram Bot API 7.1 以及 python-tele
 
 1. 发送您希望投稿的内容，包括文本、图片、视频、文件、GIF 和贴纸。
 2. 可以实名或匿名提交、取消当前的提交。
-3. 支持以单条消息作为一个投稿（需设置环境变量 `TG_SINGLE_MODE` 为 `True`）。
-4. 支持多次发送内容合并到同一个投稿（需设置环境变量 `TG_SINGLE_MODE` 为 `False`，使用 `/new` 命令开始一个新的提交）。
+3. 每条消息作为一个投稿。
 
 ### 审稿
 
@@ -68,7 +67,6 @@ Telegram 投稿/审稿机器人，基于 Telegram Bot API 7.1 以及 python-tele
 | `TG_REJECTION_REASON`         | 预置拒绝理由的列表，以冒号分隔                                                                                                                      | `"内容不够有趣:内容不适当:重复投稿"`   | 否，若无，则只支持自定义理由和因重复而拒稿时的预置理由以及忽略 |
 | `TG_BANNED_NOTIFY`            | 是否通知投稿者已被屏蔽                                                                                                                              | `True` 或 `False`                      | 否，默认为 True                                                |
 | `TG_REJECT_REASON_USER_LIMIT` | 是否限制只能由原拒稿人选择拒稿理由，若为 `False` 表示任意其他审稿人都将作为新的拒稿人，可以选择拒稿理由                                             | `True` 或 `False`                      | 否，默认为 True                                                |
-| `TG_SINGLE_MODE`              | 是否将多条消息作为多次投稿，若为 `True` 表示一条消息是一次投稿，若为 `False` 表示将多次发送的消息合并为一次投稿，此时需要以 `/new` 命令开始新的投稿 | `True` 或 `False`                      | 否，默认为 True                                                |
 | `TG_TEXT_SPOILER`             | 是否为 NSFW 投稿的文字添加遮罩                                                                                                                      | `True` 或 `False`                      | 否，默认为 True                                                |
 | `TG_EXPAND_LENGTH`            | 文字长度大于多少时进行折叠                                                                                                                          | `200`                                  | 否，默认为 200                                                 |
 | `TG_SELF_APPROVE`             | 是否允许审核给自己的稿件投通过票，True 为允许，False 为禁止                                                                                         | `True` 或 `False`                      | 否，默认为 True                                                |

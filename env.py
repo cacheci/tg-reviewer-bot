@@ -42,8 +42,6 @@ if data_dir is not None:
             REJECT_NUMBER_REQUIRED      = int(str(data.get('non_required', {}).get('REJECT_NUMBER_REQUIRED', 2)))
             TG_TIMEOUT_SINGLEREVIEW     = int(str(data.get('non_required', {}).get('TG_TIMEOUT_SINGLEREVIEW', "10080")))
 
-            TG_SINGLE_MODE              = data.get('non_required', {}).get('TG_SINGLE_MODE', True)
-
             TG_TEXT_SPOILER             = data.get('non_required', {}).get('TG_TEXT_SPOILER', True)
             TG_EXPAND_LENGTH            = int(str(data.get('non_required', {}).get('TG_EXPAND_LENGTH', 200)))
 
@@ -79,7 +77,6 @@ else:
 
         # non-required settings
         # bool
-        TG_SINGLE_MODE                  = os.getenv("TG_SINGLE_MODE", "True")       == "True"
         TG_TEXT_SPOILER                 = os.getenv("TG_TEXT_SPOILER", "True")      == "True"
         TG_SELF_APPROVE                 = os.getenv("TG_SELF_APPROVE", "True")      == "True"
         TG_RETRACT_NOTIFY               = os.getenv("TG_RETRACT_NOTIFY", "True")    == "True"
