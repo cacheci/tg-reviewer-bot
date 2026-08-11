@@ -71,6 +71,7 @@ if __name__ == "__main__":
         .read_timeout(60)
         .get_updates_write_timeout(60)
         .write_timeout(60)
+        .job_queue(None)
         .build()
     )
 

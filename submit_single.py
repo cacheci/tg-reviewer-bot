@@ -31,7 +31,7 @@ async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if TG_REVIEWONLY:
         await update.message.reply_text(
             "本 Bot 已暂停使用。请查看频道获取更多信息",
-            quote=True,)
+            do_quote=True,)
         return
 
     message = update.message
@@ -87,7 +87,7 @@ async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
 - 恶俗性挂人
 
 稿件将由多位管理投票审核，每位管理的审核标准可能不一，投票制可以改善这类问题，但仍可能对部分圈内的梗不太熟悉，请您理解""",
-        quote=True,
+        do_quote=True,
         reply_markup=reply_markup,
     )
 
