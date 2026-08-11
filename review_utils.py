@@ -1,5 +1,7 @@
 import base64
+import binascii
 import pickle
+import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
@@ -12,9 +14,11 @@ from env import (
     APPROVE_NUMBER_REQUIRED,
     REJECT_NUMBER_REQUIRED,
     REJECTION_REASON,
+    TG_PUBLISH_CHANNEL,
     TG_REJECT_REASON_USER_LIMIT,
     TG_REJECTED_CHANNEL,
     TG_RETRACT_NOTIFY,
+    TG_REVIEWER_GROUP,
 )
 from utils import send_result_to_submitter, send_submission, sanitize_userinfo, generate_userinfo_str
 
@@ -363,6 +367,59 @@ async def comment_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"来自审核的消息：{comment_message}",
     )
     await update.message.reply_text("✅ 已发送")
+
+
+async def tracking_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply_message = update.message.reply_to_message
+    if not reply_message:
+        await update.message.reply_text("使用方式：对发布频道的机器人消息，在这个群跨群回复 `/tracking`。")
+        return
+
+    publish_channel_ids = {int(channel_id) for channel_id in TG_PUBLISH_CHANNEL}
+    if reply_message.chat.id not in publish_channel_ids:
+        await update.message.reply_text("被回复的消息不是频道的消息。\n\n使用方式：对发布频道的机器人消息，在这个群跨群回复 `/tracking`。")
+        return
+
+    bot_user = await context.bot.get_me()
+    if not reply_message.from_user or reply_message.from_user.id != bot_user.id:
+        await update.message.reply_text("被回复的消息不是机器人发送的投稿消息。\n\n使用方式：对发布频道的机器人消息，在这个群跨群回复 `/tracking`。")
+        return
+
+    reply_text = (
+        reply_message.text_markdown_v2_urled
+        or reply_message.caption_markdown_v2_urled
+        or ""
+    )
+    tracking_tokens = re.findall(
+        r"https?://t\.me/([A-Za-z0-9_-]+={0,2})", reply_text
+    )
+    if not tracking_tokens:
+        await update.message.reply_text("未找到投稿追踪参数")
+        return
+
+    try:
+        tracking_meta = pickle.loads(
+            base64.urlsafe_b64decode(tracking_tokens[-1])
+        )
+        review_message_id = int(tracking_meta["review_message_id"])
+    except (
+        binascii.Error,
+        EOFError,
+        ValueError,
+        KeyError,
+        TypeError,
+        pickle.UnpicklingError,
+    ):
+        await update.message.reply_text("投稿追踪参数无效")
+        return
+
+    reviewer_group_id = str(TG_REVIEWER_GROUP)
+    if reviewer_group_id.startswith("-100"):
+        reviewer_group_id = reviewer_group_id[4:]
+    await update.message.reply_text(
+        f"https://t.me/c/{reviewer_group_id}/{review_message_id}",
+        disable_web_page_preview=True,
+    )
 
 
 async def send_custom_rejection_reason(

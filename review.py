@@ -124,6 +124,13 @@ async def approve_submission(
         for append_list in submission_meta["append"].values():
             append_messages.extend(append_list)
         append_messages_string = "\n".join(append_messages)
+        tracking_meta = base64.urlsafe_b64encode(
+            pickle.dumps({"review_message_id": review_message.message_id})
+        ).decode()
+        publish_text = submission_meta["text"]
+        if append_messages_string:
+            publish_text += "\n" + append_messages_string
+        publish_text += f"[\u200b](http://t.me/{tracking_meta})"
         sent_messages = await send_submission(
             context=context,
             chat_id=publish_channel,
@@ -131,7 +138,7 @@ async def approve_submission(
             media_type_list=submission_meta["media_type_list"],
             documents_id_list=submission_meta["documents_id_list"],
             document_type_list=submission_meta["document_type_list"],
-            text=submission_meta["text"] + "\n" + append_messages_string,
+            text=publish_text,
             has_spoiler=has_spoiler,
         )
         if main_channel_messages is None:
