@@ -45,7 +45,7 @@ from review_utils import (
     remove_append_message,
     retract_approved_submission,
     send_custom_rejection_reason,
-    tracking_message,
+    track_message,
 )
 from stats import (
     get_set_default_max_submission_per_hour,
@@ -138,8 +138,8 @@ if __name__ == "__main__":
                 send_custom_rejection_reason,
             ),
             CommandHandler(
-                "tracking",
-                tracking_message,
+                "track",
+                track_message,
                 filters=filters.REPLY
                 & filters.Chat(chat_id=int(TG_REVIEWER_GROUP)),
             ),

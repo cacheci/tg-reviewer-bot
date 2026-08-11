@@ -4,7 +4,7 @@ import pickle
 import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ParseMode
+from telegram.constants import MessageOriginType, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
@@ -369,20 +369,24 @@ async def comment_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ 已发送")
 
 
-async def tracking_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_message = update.message.reply_to_message
     if not reply_message:
-        await update.message.reply_text("使用方式：对发布频道的机器人消息，在这个群跨群回复 `/tracking`。")
+        await update.message.reply_text(
+            "使用方式：将发布频道的投稿转发到审核群，再回复该消息 `/track`。"
+        )
         return
 
+    forward_origin = reply_message.forward_origin
     publish_channel_ids = {int(channel_id) for channel_id in TG_PUBLISH_CHANNEL}
-    if reply_message.chat.id not in publish_channel_ids:
-        await update.message.reply_text("被回复的消息不是频道的消息。\n\n使用方式：对发布频道的机器人消息，在这个群跨群回复 `/tracking`。")
-        return
-
-    bot_user = await context.bot.get_me()
-    if not reply_message.from_user or reply_message.from_user.id != bot_user.id:
-        await update.message.reply_text("被回复的消息不是机器人发送的投稿消息。\n\n使用方式：对发布频道的机器人消息，在这个群跨群回复 `/tracking`。")
+    if (
+        not forward_origin
+        or forward_origin.type != MessageOriginType.CHANNEL
+        or forward_origin.chat.id not in publish_channel_ids
+    ):
+        await update.message.reply_text(
+            "被回复的消息不是从发布频道转发的投稿消息。\n\n使用方式：将发布频道的投稿转发到审核群，再回复该消息 `/track`。"
+        )
         return
 
     reply_text = (
@@ -394,7 +398,7 @@ async def tracking_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         r"https?://t\.me/([A-Za-z0-9_-]+={0,2})", reply_text
     )
     if not tracking_tokens:
-        await update.message.reply_text("未找到投稿追踪参数")
+        await update.message.reply_text("未找到投稿追踪参数\n\n使用方式：将发布频道的投稿转发到审核群，再回复该消息 `/track`。")
         return
 
     try:
