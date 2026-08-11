@@ -69,6 +69,7 @@ Telegram 投稿/审稿机器人，基于 Telegram Bot API 7.1 以及 python-tele
 | `TG_REJECT_REASON_USER_LIMIT` | 是否限制只能由原拒稿人选择拒稿理由，若为 `False` 表示任意其他审稿人都将作为新的拒稿人，可以选择拒稿理由                                             | `True` 或 `False`                      | 否，默认为 True                                                |
 | `TG_TEXT_SPOILER`             | 是否为 NSFW 投稿的文字添加遮罩                                                                                                                      | `True` 或 `False`                      | 否，默认为 True                                                |
 | `TG_EXPAND_LENGTH`            | 文字长度大于多少时进行折叠                                                                                                                          | `200`                                  | 否，默认为 200                                                 |
+| `TG_DEFAULT_MAX_SUBMISSION_PER_HOUR` | 投稿者默认每小时最大投稿数量                                                                                                                 | `20`                                    | 否，默认为 20                                                   |
 | `TG_SELF_APPROVE`             | 是否允许审核给自己的稿件投通过票，True 为允许，False 为禁止                                                                                         | `True` 或 `False`                      | 否，默认为 True                                                |
 | `TG_TIMEOUT_SINGLEREVIEW`     | 超过设定时间后，投稿仅需 1 次审核就能通过或拒绝       | `10080` | 否，默认为 `10080`，若要禁用请设置为较大值 |
 

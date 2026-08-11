@@ -45,6 +45,8 @@ if data_dir is not None:
             TG_TEXT_SPOILER             = data.get('non_required', {}).get('TG_TEXT_SPOILER', True)
             TG_EXPAND_LENGTH            = int(str(data.get('non_required', {}).get('TG_EXPAND_LENGTH', 200)))
 
+            TG_DEFAULT_MAX_SUBMISSION_PER_HOUR = int(str(data.get('non_required', {}).get('TG_DEFAULT_MAX_SUBMISSION_PER_HOUR', 20)))
+
             TG_SELF_APPROVE             = data.get('non_required', {}).get('TG_SELF_APPROVE', True)
             TG_REJECT_REASON_USER_LIMIT = data.get('non_required', {}).get('TG_REJECT_REASON_USER_LIMIT', True)
             REJECTION_REASON_JSON       = data.get('non_required', {}).get('TG_REJECTION_REASON', ["已有其他相似投稿","内容不够有趣","内容过于火星","引起感官不适","内容 NSFW","没有 Get 到梗","不在可接受范围内","点错了，正在召唤补发"])
@@ -104,6 +106,11 @@ else:
             TG_TIMEOUT_SINGLEREVIEW     = int(os.getenv("TG_TIMEOUT_SINGLEREVIEW", "10080"))
         except (TypeError, ValueError):
             TG_TIMEOUT_SINGLEREVIEW     = 200
+
+        try:
+            TG_DEFAULT_MAX_SUBMISSION_PER_HOUR = int(os.getenv("TG_DEFAULT_MAX_SUBMISSION_PER_HOUR", 5))
+        except (TypeError, ValueError):
+            TG_DEFAULT_MAX_SUBMISSION_PER_HOUR = 20
 
         # string
         TG_REJECTED_CHANNEL             = os.environ.get("TG_REJECTED_CHANNEL")

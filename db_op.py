@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from typing_extensions import Annotated
 
-from env import TG_DB_URL
+from env import TG_DB_URL, TG_DEFAULT_MAX_SUBMISSION_PER_HOUR
 
 class Base(DeclarativeBase):
     pass
@@ -33,7 +33,7 @@ class Submitter(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     count_from_last_hour: Mapped[int] = mapped_column(default=1)
-    max_submission_per_hour: Mapped[int] = mapped_column(default=20)
+    max_submission_per_hour: Mapped[int] = mapped_column(default=TG_DEFAULT_MAX_SUBMISSION_PER_HOUR)
 
     def __repr__(self):
         return f"Submitter(User ID: {self.user_id}, Submission Count: {self.submission_count}, Approved Count: {self.approved_count}, Rejected Count: {self.rejected_count}, Last Submit: {self.last_submit}, Count Until Last Submit: {self.count_from_last_hour}, Max Submission Per Hour: {self.max_submission_per_hour})"
