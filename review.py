@@ -130,7 +130,10 @@ async def approve_submission(
         publish_text = submission_meta["text"]
         if append_messages_string:
             publish_text += "\n" + append_messages_string
-        publish_text += f"[\u200b](http://t.me/{tracking_meta})"
+        if publish_text.endwith("||"):
+            publish_text += f"\n[\u200b](http://t.me/{tracking_meta})"
+        else:
+            publish_text += f"[\u200b](http://t.me/{tracking_meta})"
         sent_messages = await send_submission(
             context=context,
             chat_id=publish_channel,
