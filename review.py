@@ -130,7 +130,7 @@ async def approve_submission(
         publish_text = submission_meta["text"]
         if append_messages_string:
             publish_text += "\n" + append_messages_string
-        if publish_text.endwith("||"):
+        if publish_text.endswith("||"):
             publish_text += f"\n[\u200b](http://t.me/{tracking_meta})"
         else:
             publish_text += f"[\u200b](http://t.me/{tracking_meta})"
