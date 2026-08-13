@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from db_op import Reviewer, Submitter, current_month_key
+from db_op import IdempotencyRecord, Reviewer, Submitter, current_month_key
 from env import (
     APPROVE_NUMBER_REQUIRED,
     REJECT_NUMBER_REQUIRED,
@@ -24,6 +24,17 @@ from review_utils import (
     send_to_rejected_channel,
 )
 from utils import send_result_to_submitter, send_submission
+
+
+def review_operation_key(review_message, reviewer_id):
+    return (
+        f"review:{review_message.chat_id}:{review_message.message_id}:"
+        f"{reviewer_id}"
+    )
+
+
+def finalize_operation_key(review_message):
+    return f"review-finalize:{review_message.chat_id}:{review_message.message_id}"
 
 
 async def approve_submission(
@@ -48,20 +59,27 @@ async def approve_submission(
     reviewer_months = stats_month.setdefault("reviewers", {})
 
     submission_longago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
-    already_choose = False
-    # if the reviewer has already rejected the submission
-    if reviewer_id in list(submission_meta["reviewer"]):
-        already_choose = True
-        if submission_meta["reviewer"][reviewer_id][2] not in [
-            ReviewChoice.SFW,
-            ReviewChoice.NSFW,
-        ]:
-            await query_decision(update, context)
-            return
-
     # if the reviwer is the submitter
     if not TG_SELF_APPROVE and reviewer_id == submission_meta["submitter"][0]:
         await query.answer("❌ 你不能给自己投通过票")
+        return
+    if IdempotencyRecord.get(finalize_operation_key(review_message)):
+        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        return
+
+    operation_key = review_operation_key(review_message, reviewer_id)
+    if reviewer_id in submission_meta["reviewer"]:
+        if not IdempotencyRecord.get(operation_key):
+            IdempotencyRecord.claim(
+                operation_key,
+                "review",
+                str(submission_meta["reviewer"][reviewer_id][2]),
+            )
+            IdempotencyRecord.complete(operation_key)
+        await query_decision(update, context)
+        return
+    if not IdempotencyRecord.claim_review(operation_key, str(action)):
+        await query.answer("该审核操作正在处理或已经完成", show_alert=True)
         return
 
     # if the reviewer has not rejected the submission
@@ -72,12 +90,11 @@ async def approve_submission(
     ]
 
     # increse reviewer approve count
-    if not already_choose:
-        reviewer_month = current_month_key()
-        reviewer_months[reviewer_id] = reviewer_month
-        Reviewer.count_increase(
-            reviewer_id, "approve_count", month=reviewer_month
-        )
+    reviewer_month = current_month_key()
+    reviewer_months[reviewer_id] = reviewer_month
+    Reviewer.count_increase(
+        reviewer_id, "approve_count", month=reviewer_month
+    )
 
     # get options from all reviewers
     review_options = [
@@ -96,8 +113,16 @@ async def approve_submission(
         await query.answer(
             f"✅ 投票成功！{get_decision(submission_meta, reviewer_id)}"
         )
+        IdempotencyRecord.complete(operation_key)
         return
     # else if the submission has been approved by enough reviewers
+    finalization_key = finalize_operation_key(review_message)
+    if not IdempotencyRecord.claim(
+        finalization_key, "review_finalize", str(action)
+    ):
+        IdempotencyRecord.complete(operation_key)
+        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        return
     await query.answer("✅ 投票成功，此条投稿已通过")
     # increse submitter approved count
     result_month = current_month_key()
@@ -229,6 +254,8 @@ async def approve_submission(
             ]
         ),
     )
+    IdempotencyRecord.complete(operation_key)
+    IdempotencyRecord.complete(finalization_key)
 
 
 async def reject_submission(
@@ -250,12 +277,28 @@ async def reject_submission(
     )
     stats_month = submission_meta.setdefault("stats_month", {})
     reviewer_months = stats_month.setdefault("reviewers", {})
+    if IdempotencyRecord.get(finalize_operation_key(review_message)):
+        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        return
+
+    operation_key = review_operation_key(review_message, reviewer_id)
+    if reviewer_id in submission_meta["reviewer"]:
+        if not IdempotencyRecord.get(operation_key):
+            IdempotencyRecord.claim(
+                operation_key,
+                "review",
+                str(submission_meta["reviewer"][reviewer_id][2]),
+            )
+            IdempotencyRecord.complete(operation_key)
+        await query_decision(update, context)
+        return
+    if not IdempotencyRecord.claim_review(operation_key, str(action)):
+        await query.answer("该审核操作正在处理或已经完成", show_alert=True)
+        return
 
     submission_longago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
     # if REJECT_DUPLICATE, only one reviewer is enough
     if action == ReviewChoice.REJECT_DUPLICATE:
-        # if the reviewer has already approved or rejected the submission, remove the previous decision
-        submission_meta, _ = remove_decision(submission_meta, reviewer_id)
         submission_meta["reviewer"][reviewer_id] = [
             reviewer_username,
             reviewer_fullname,
@@ -263,6 +306,15 @@ async def reject_submission(
         ]
         reviewer_month = current_month_key()
         reviewer_months[reviewer_id] = reviewer_month
+        finalization_key = finalize_operation_key(review_message)
+        if not IdempotencyRecord.claim(
+            finalization_key, "review_finalize", str(action)
+        ):
+            IdempotencyRecord.complete(operation_key)
+            await query.answer(
+                "此条投稿正在处理或已经处理完成", show_alert=True
+            )
+            return
         await query.answer("✅ 投票成功，此条投稿已被拒绝")
         inline_keyboard_content = []
         inline_keyboard_content.append(
@@ -302,10 +354,8 @@ async def reject_submission(
                         reviewer_id, current_month_key()
                     ),
                 )
-        return
-    # else if the reviewer has already approved or rejected the submission
-    if (reviewer_id in list(submission_meta["reviewer"])) and not submission_longago:
-        await query_decision(update, context)
+        IdempotencyRecord.complete(operation_key)
+        IdempotencyRecord.complete(finalization_key)
         return
     # else if the reviewer has not approved or rejected the submission
     submission_meta["reviewer"][reviewer_id] = [
@@ -336,8 +386,16 @@ async def reject_submission(
         await query.answer(
             f"✅ 投票成功！{get_decision(submission_meta, reviewer_id)}"
         )
+        IdempotencyRecord.complete(operation_key)
         return
     # else if the submission has been rejected by enough reviewers
+    finalization_key = finalize_operation_key(review_message)
+    if not IdempotencyRecord.claim(
+        finalization_key, "review_finalize", str(action)
+    ):
+        IdempotencyRecord.complete(operation_key)
+        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        return
     await query.answer("✅ 投票成功，此条投稿已被拒绝")
     # increse submitter rejected count
     result_month = current_month_key()
@@ -398,6 +456,8 @@ async def reject_submission(
         parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=InlineKeyboardMarkup(inline_keyboard_content),
     )
+    IdempotencyRecord.complete(operation_key)
+    IdempotencyRecord.complete(finalization_key)
 
 
 async def query_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -426,6 +486,23 @@ async def withdraw_decision(
             review_message.text_markdown_v2_urled.split("/")[-1][:-1]
         )
     )
+    if IdempotencyRecord.get(finalize_operation_key(review_message)):
+        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        return
+
+    operation_key = review_operation_key(review_message, reviewer)
+    if reviewer in submission_meta["reviewer"] and not IdempotencyRecord.get(
+        operation_key
+    ):
+        IdempotencyRecord.claim(
+            operation_key,
+            "review",
+            str(submission_meta["reviewer"][reviewer][2]),
+        )
+        IdempotencyRecord.complete(operation_key)
+    if not IdempotencyRecord.claim_withdraw(operation_key):
+        await query.answer("没有可撤回的投票，或撤回正在处理中", show_alert=True)
+        return
 
     submission_meta, removed = remove_decision(submission_meta, reviewer)
     if removed:
@@ -434,6 +511,8 @@ async def withdraw_decision(
             parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=review_message.reply_markup,
         )
+        IdempotencyRecord.complete(operation_key)
         await query.answer("↩️ 已撤回")
     else:
+        IdempotencyRecord.complete(operation_key)
         await query.answer("😂 你还没有投票")

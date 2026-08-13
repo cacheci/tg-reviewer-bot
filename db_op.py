@@ -478,6 +478,92 @@ class ReviewerMonthlyStats(Base):
             return None
 
 
+class IdempotencyRecord(Base):
+    __tablename__ = "idempotency_records"
+    operation_key: Mapped[str] = mapped_column(String(150), primary_key=True)
+    operation_type: Mapped[str] = mapped_column(String(30))
+    action: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    @staticmethod
+    def claim(operation_key, operation_type, action):
+        try:
+            db.insert(
+                IdempotencyRecord,
+                operation_key=operation_key,
+                operation_type=operation_type,
+                action=action,
+                status="processing",
+            )
+            return True
+        except IntegrityError:
+            return False
+
+    @staticmethod
+    def get(operation_key):
+        try:
+            return db.select(
+                IdempotencyRecord,
+                IdempotencyRecord.operation_key == operation_key,
+            )[0]
+        except IndexError:
+            return None
+
+    @staticmethod
+    def complete(operation_key):
+        db.update(
+            IdempotencyRecord,
+            IdempotencyRecord.operation_key == operation_key,
+            status="completed",
+            updated_at=datetime.now(),
+        )
+
+    @staticmethod
+    def claim_review(operation_key, action):
+        if IdempotencyRecord.claim(operation_key, "review", action):
+            return True
+        record = IdempotencyRecord.get(operation_key)
+        if (
+            not record
+            or record.action != "withdraw"
+            or record.status != "completed"
+        ):
+            return False
+        return db.update_if(
+            IdempotencyRecord,
+            (IdempotencyRecord.operation_key == operation_key)
+            & (IdempotencyRecord.action == "withdraw")
+            & (IdempotencyRecord.status == "completed"),
+            action=action,
+            status="processing",
+            updated_at=datetime.now(),
+        )
+
+    @staticmethod
+    def claim_withdraw(operation_key):
+        record = IdempotencyRecord.get(operation_key)
+        if (
+            not record
+            or record.status != "completed"
+            or record.action == "withdraw"
+        ):
+            return False
+        return db.update_if(
+            IdempotencyRecord,
+            (IdempotencyRecord.operation_key == operation_key)
+            & (IdempotencyRecord.status == "completed")
+            & (IdempotencyRecord.action != "withdraw"),
+            action="withdraw",
+            status="processing",
+            updated_at=datetime.now(),
+        )
+
 class DB:
     def __init__(self, database_url):
         self.engine = create_engine(database_url, pool_pre_ping=True)
@@ -505,6 +591,12 @@ class DB:
         with self.Session.begin() as session:
             stmt = update(table).where(condition_expr).values(**kwargs)
             session.execute(stmt)
+
+    def update_if(self, table, condition_expr, **kwargs):
+        with self.Session.begin() as session:
+            stmt = update(table).where(condition_expr).values(**kwargs)
+            result = session.execute(stmt)
+            return result.rowcount == 1
 
     def delete(self, table, condition_expr):
         with self.Session.begin() as session:

@@ -1,7 +1,5 @@
-import time
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import MessageOriginType, ParseMode
+from telegram.constants import MessageOriginType
 from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
@@ -10,20 +8,16 @@ from telegram.ext import (
 )
 from telegram.helpers import escape_markdown
 
-from db_op import Submitter, current_month_key
+from db_op import IdempotencyRecord, Submitter, current_month_key
 from env import TG_EXPAND_LENGTH, TG_REVIEWER_GROUP, TG_REVIEWONLY
 from review_utils import reply_review_message
 from utils import (
-    LRUCache,
     check_submission,
     send_result_to_submitter,
     send_submission,
 )
 
 media_groups = {}
-submission_timestamp = LRUCache(20)
-
-
 async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_submission(update) == False:
         return
@@ -96,38 +90,44 @@ async def confirm_submission(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
     query = update.callback_query
-    # CallbackQueries need to be answered, even if no notification to the user is needed
-    # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
-    await query.answer()
-
     user = update.effective_user
 
     confirm_message = update.effective_message
     origin_message = confirm_message.reply_to_message
+    action = query.data.split("#")[0]
+    operation_key = (
+        f"submission:{confirm_message.chat_id}:{confirm_message.message_id}"
+    )
 
-    if query.data.startswith("cancel"):
+    if action == "cancel":
+        if not IdempotencyRecord.claim(operation_key, "submission", action):
+            await query.answer("该投稿操作已经处理", show_alert=True)
+            return
+        await query.answer()
         await query.edit_message_text(text="投稿已取消")
-    elif query.data.startswith(("anonymous", "realname")):
+        IdempotencyRecord.complete(operation_key)
+    elif action in ("anonymous", "realname"):
+        record = IdempotencyRecord.get(operation_key)
+        if record:
+            message = (
+                "投稿正在处理中"
+                if record.status == "processing"
+                else "该投稿操作已经处理"
+            )
+            await query.answer(message, show_alert=True)
+            return
         if await check_submission(update) == False:
             return
-
-        submission_id = int(query.data.split("#")[-1])
-        last_submission_time = submission_timestamp.get(submission_id)
-        if (
-            last_submission_time != -1
-            and int(time.time()) - last_submission_time < 10
-        ):
-            try:
-                await query.edit_message_text(
-                    text="请勿重复点按。\n若 10 秒后没有变化请再考虑重新投递。",
-                    reply_markup=query.message.reply_markup,
-                    parse_mode=ParseMode.MARKDOWN_V2,
-                )
-                return
-            except:
-                return
-        else:
-            submission_timestamp.put(submission_id, int(time.time()))
+        if not IdempotencyRecord.claim(operation_key, "submission", action):
+            record = IdempotencyRecord.get(operation_key)
+            message = (
+                "投稿正在处理中"
+                if record and record.status == "processing"
+                else "该投稿操作已经处理"
+            )
+            await query.answer(message, show_alert=True)
+            return
+        await query.answer()
 
         text = (
             origin_message.text_markdown_v2_urled
@@ -259,6 +259,7 @@ async def confirm_submission(
             user.id, "submission_count", month=submission_month
         )
         Submitter.add_count_in_hour(user.id)
+        IdempotencyRecord.complete(operation_key)
 
 
 submission_handler = MessageHandler(
