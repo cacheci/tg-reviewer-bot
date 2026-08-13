@@ -1,4 +1,5 @@
 import os, json, re, logging
+from strings import others as strings_others
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +50,8 @@ if data_dir is not None:
 
             TG_SELF_APPROVE             = data.get('non_required', {}).get('TG_SELF_APPROVE', True)
             TG_REJECT_REASON_USER_LIMIT = data.get('non_required', {}).get('TG_REJECT_REASON_USER_LIMIT', True)
-            REJECTION_REASON_JSON       = data.get('non_required', {}).get('TG_REJECTION_REASON', ["已有其他相似投稿","内容不够有趣","内容过于火星","引起感官不适","内容 NSFW","没有 Get 到梗","不在可接受范围内","点错了，正在召唤补发"])
-            REJECTION_REASON            = REJECTION_REASON_JSON if isinstance(REJECTION_REASON_JSON, list) else ["默认理由"]
+            REJECTION_REASON_JSON       = data.get('non_required', {}).get('TG_REJECTION_REASON', strings_others["default_rejection_reasons"])
+            REJECTION_REASON            = REJECTION_REASON_JSON if isinstance(REJECTION_REASON_JSON, list) else [strings_others["default_reason"]]
 
             TG_RETRACT_NOTIFY           = data.get('non_required', {}).get('TG_RETRACT_NOTIFY', True)
             TG_BANNED_NOTIFY            = data.get('non_required', {}).get('TG_BANNED_NOTIFY', True)
@@ -114,7 +115,7 @@ else:
 
         # string
         TG_REJECTED_CHANNEL             = os.environ.get("TG_REJECTED_CHANNEL")
-        REJECTION_REASON                = os.environ.get("TG_REJECTION_REASON", "已有其他相似投稿:内容不够有趣:内容过于火星:引起感官不适:内容 NSFW:没有 Get 到梗:不在可接受范围内:点错了，正在召唤补发").split(":")
+        REJECTION_REASON                = os.environ.get("TG_REJECTION_REASON", ":".join(strings_others["default_rejection_reasons"])).split(":")
         TG_DB_URL                       = os.environ.get("TG_DB_URL", "sqlite:///data/database.db")
         TG_CUSTOMAPI                    = os.environ.get("TG_CUSTOMAPI", "https://api.telegram.org/bot")
     except KeyError as e:

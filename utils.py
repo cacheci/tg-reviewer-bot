@@ -13,6 +13,8 @@ from telegram.ext.filters import MessageFilter
 from db_op import Banned_origin, Banned_user, Submitter
 from telegram.helpers import escape_markdown
 from env import TG_BANNED_NOTIFY, TG_TEXT_SPOILER, TG_REVIEWER_GROUP
+from strings import others as strings_others
+from strings import submitter as strings_submitter
 
 
 class PrefixFilter(MessageFilter):
@@ -234,7 +236,7 @@ def generate_userinfo_str(
         else:
             userinfo_str += sanitize_userinfo(escape_markdown(fullname,version = 2))
     else:
-        userinfo_str += "*_神秘用户_*"
+        userinfo_str += strings_others["unknown_user"]
 
     userinfo_str += " \\("
 
@@ -253,24 +255,24 @@ def generate_userinfo_str(
 async def check_submission(update):
     if Banned_user.is_banned(update.effective_user.id):
         if TG_BANNED_NOTIFY:
-            await update.message.reply_text("你已被禁止投稿。")
+            await update.message.reply_text(strings_submitter["banned"])
         return False
     forward_from = update._effective_message.forward_origin
     if forward_from is not None:
         if forward_from.type == forward_from.USER:
             if Banned_origin.is_banned(forward_from.sender_user.id):
-                await update.message.reply_text("此来源的投稿不被接受。")
+                await update.message.reply_text(strings_submitter["origin_banned"])
                 return False
         if forward_from.type == forward_from.CHANNEL:
             if Banned_origin.is_banned(forward_from.chat.id):
-                await update.message.reply_text("此来源的投稿不被接受。")
+                await update.message.reply_text(strings_submitter["origin_banned"])
                 return False
     remiaining_count, max_count = Submitter.remaining_count_in_hour(
         update.effective_user.id
     )
     if remiaining_count <= 0:
         await update.effective_message.reply_text(
-            f"你已用完全部 {max_count} 次投稿次数，请一小时后再试。"
+            strings_submitter["hourly_limit"].format(max_count=max_count)
         )
         return False
     return True
@@ -302,7 +304,7 @@ class LRUCache:
 async def on_init(application):
     await application.bot.send_message(
         chat_id=int(TG_REVIEWER_GROUP),
-        text="🥷舍利子回魂🥷，🟢 Bot 已复活",
+        text=strings_others["bot_recovered"],
     )
 
 def is_integer(s):
@@ -314,8 +316,8 @@ def is_integer(s):
 
 def sanitize_userinfo(text: str) -> str:
     if not text:
-        return "*_空白用户名_*"
+        return strings_others["blank_username"]
     userinfo = re.sub(r'[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\x00-\x1F\x7F\x80-\x9F]', '', text).strip()
     if userinfo == "":
-        userinfo = "*_空白用户名_*"
+        userinfo = strings_others["blank_username"]
     return userinfo

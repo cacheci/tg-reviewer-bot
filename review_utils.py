@@ -21,6 +21,9 @@ from env import (
     TG_REVIEWER_GROUP,
 )
 from utils import send_result_to_submitter, send_submission, sanitize_userinfo, generate_userinfo_str
+from strings import channel as strings_channel
+from strings import reviewer as strings_reviewer
+from strings import submitter as strings_submitter
 
 """
 submission_meta = {
@@ -71,47 +74,47 @@ async def reply_review_message(
         [
             [
                 InlineKeyboardButton(
-                    "🟢 通过",
+                    strings_reviewer["approve"],
                     callback_data=f"{ReviewChoice.SFW}.{first_submission_message.message_id}",
                 ),
                 InlineKeyboardButton(
-                    "🟡 以 NSFW 通过",
+                    strings_reviewer["approve_nsfw"],
                     callback_data=f"{ReviewChoice.NSFW}.{first_submission_message.message_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "🔴 拒绝",
+                    strings_reviewer["reject"],
                     callback_data=f"{ReviewChoice.REJECT}.{first_submission_message.message_id}",
                 ),
                 InlineKeyboardButton(
-                    "🔴 以重复投稿拒绝",
+                    strings_reviewer["reject_duplicate"],
                     callback_data=f"{ReviewChoice.REJECT_DUPLICATE}.{first_submission_message.message_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "❔ 查询我的投票",
+                    strings_reviewer["query_vote"],
                     callback_data=f"{ReviewChoice.QUERY}.{first_submission_message.message_id}",
                 ),
                 InlineKeyboardButton(
-                    "↩️ 撤回我的投票",
+                    strings_reviewer["withdraw_vote"],
                     callback_data=f"{ReviewChoice.WITHDRAW}.{first_submission_message.message_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "📝 添加备注",
+                    strings_reviewer["add_note"],
                     switch_inline_query_current_chat="/append ",
                 ),
                 InlineKeyboardButton(
-                    "⬅️ 删除备注",
+                    strings_reviewer["remove_note"],
                     switch_inline_query_current_chat="/remove_append ",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "💬 回复投稿人",
+                    strings_reviewer["reply_submitter"],
                     switch_inline_query_current_chat="/comment ",
                 ),
             ],
@@ -131,12 +134,13 @@ async def reply_review_message(
             )
             await first_submission_message.reply_text(
                 escape_markdown(
-                    f"""\
-❌ 稿件过长，已通知投稿人。
-
-投稿人：{submitter_fullname} ({f'@{submitter_username}, ' if submitter_username else ''}{submitter_id})
-
-#USER_{submitter_id} #SUBMITTER_{submitter_id} #REJECTED""",
+                    strings_reviewer["submission_too_long"].format(
+                        submitter=(
+                            f"{submitter_fullname} "
+                            f"({f'@{submitter_username}, ' if submitter_username else ''}{submitter_id})"
+                        ),
+                        submitter_id=submitter_id,
+                    ),
                     version=2,
                 ),
                 parse_mode=ParseMode.MARKDOWN_V2,
@@ -145,7 +149,7 @@ async def reply_review_message(
                 context,
                 submission_meta["submitter"][0],
                 submission_meta["submitter"][3],
-                f"😢 很抱歉，投稿过长无法发送，请考虑缩短文字/分段投稿或者放弃投稿。",
+                strings_submitter["too_long"],
             )
 
 
@@ -171,7 +175,7 @@ async def reject_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
             or submission_meta["reviewer"][reviewer_id][2]
             != ReviewChoice.REJECT
         ):
-            await query.answer("😂 你没有投拒绝票")
+            await query.answer(strings_reviewer["no_reject_vote"])
             return
 
     # if the reviewer has rejected the submission
@@ -217,7 +221,7 @@ async def send_to_rejected_channel(
     inline_keyboard_content.append(
         [
             InlineKeyboardButton(
-                "💬 回复投稿人",
+                strings_reviewer["reply_submitter"],
                 switch_inline_query_current_chat="/comment ",
             )
         ]
@@ -240,7 +244,7 @@ async def send_to_rejected_channel(
         button_to_rejected_channel = [
             [
                 InlineKeyboardButton(
-                    "在拒稿频道中查看", url=sent_message[-1].link
+                    strings_channel["view_rejected"], url=sent_message[-1].link
                 )
             ],
         ]
@@ -250,12 +254,14 @@ async def send_to_rejected_channel(
     # if not IGNORE, forward rejected message to it
     if submission_meta["reviewer"][user_id][2] != len(REJECTION_REASON):
         # send result to submitter
-        reason = f"\n原因：{get_rejection_reason_text(submission_meta['reviewer'][user_id][2])}"
+        reason = strings_reviewer["rejection_reason"].format(
+            reason=get_rejection_reason_text(submission_meta['reviewer'][user_id][2])
+        )
         await send_result_to_submitter(
             context,
             submission_meta["submitter"][0],
             submission_meta["submitter"][3],
-            f"😢 很抱歉，投稿未通过审核。{reason}",
+            strings_submitter["rejected"].format(reason=reason),
             # link to rejected submission button
             inline_keyboard_markup=(
                 InlineKeyboardMarkup(button_to_rejected_channel)
@@ -286,15 +292,15 @@ async def append_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     )
     if get_submission_status(submission_meta)[0] != SubmissionStatus.PENDING:
-        await update.message.reply_text("😂 只有待审稿件才能添加备注")
+        await update.message.reply_text(strings_reviewer["only_pending_add_note"])
         return
     reviewer_fullname = update.message.from_user.full_name
     if reviewer_fullname not in submission_meta["append"]:
         submission_meta["append"][reviewer_fullname] = []
     submission_meta["append"][reviewer_fullname].append(
-        f"审核注：{append_message}"
+        strings_reviewer["note_prefix"].format(message=append_message)
     )
-    await update.message.reply_text("✅ 已添加备注")
+    await update.message.reply_text(strings_reviewer["note_added"])
     await review_message.edit_text(
         text=generate_submission_meta_string(submission_meta),
         parse_mode=ParseMode.MARKDOWN_V2,
@@ -318,26 +324,26 @@ async def remove_append_message(
         )
     )
     if get_submission_status(submission_meta)[0] != SubmissionStatus.PENDING:
-        await update.message.reply_text("😂 只有待审稿件才能删除备注")
+        await update.message.reply_text(strings_reviewer["only_pending_remove_note"])
         return
     reviewer_fullname = update.message.from_user.full_name
     if reviewer_fullname not in submission_meta["append"]:
-        await update.message.reply_text("😂 你没有添加备注")
+        await update.message.reply_text(strings_reviewer["no_note"])
         return
     try:
         append_message_num = int(append_message_num)
     except:
-        await update.message.reply_text("😂 请输入正确的备注序号")
+        await update.message.reply_text(strings_reviewer["invalid_note_number"])
         return
     if append_message_num < 1 or append_message_num > len(
         submission_meta["append"][reviewer_fullname]
     ):
-        await update.message.reply_text("😂 请输入正确的备注序号")
+        await update.message.reply_text(strings_reviewer["invalid_note_number"])
         return
     submission_meta["append"][reviewer_fullname].pop(append_message_num - 1)
     if not submission_meta["append"][reviewer_fullname]:
         del submission_meta["append"][reviewer_fullname]
-    await update.message.reply_text("✅ 已删除备注")
+    await update.message.reply_text(strings_reviewer["note_removed"])
     await review_message.edit_text(
         text=generate_submission_meta_string(submission_meta),
         parse_mode=ParseMode.MARKDOWN_V2,
@@ -364,16 +370,16 @@ async def comment_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context,
         submission_meta["submitter"][0],
         submission_meta["submitter"][3],
-        f"来自审核的消息：{comment_message}",
+        strings_reviewer["review_message"].format(message=comment_message),
     )
-    await update.message.reply_text("✅ 已发送")
+    await update.message.reply_text(strings_reviewer["sent"])
 
 
 async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_message = update.message.reply_to_message
     if not reply_message:
         await update.message.reply_text(
-            "使用方式：将发布频道的投稿转发到审核群，再回复该消息 `/track`。"
+            strings_reviewer["track_usage"]
         )
         return
 
@@ -385,7 +391,9 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         or forward_origin.chat.id not in publish_channel_ids
     ):
         await update.message.reply_text(
-            "被回复的消息不是从发布频道转发的投稿消息。\n\n使用方式：将发布频道的投稿转发到审核群，再回复该消息 `/track`。"
+            strings_reviewer["track_not_channel_post"].format(
+                usage=strings_reviewer["track_usage"]
+            )
         )
         return
 
@@ -398,7 +406,9 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         r"https?://t\.me/([A-Za-z0-9_-]+={0,2})", reply_text
     )
     if not tracking_tokens:
-        await update.message.reply_text("未找到投稿追踪参数\n\n使用方式：将发布频道的投稿转发到审核群，再回复该消息 `/track`。")
+        await update.message.reply_text(
+            strings_reviewer["track_missing"].format(usage=strings_reviewer["track_usage"])
+        )
         return
 
     try:
@@ -414,7 +424,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         TypeError,
         pickle.UnpicklingError,
     ):
-        await update.message.reply_text("投稿追踪参数无效")
+        await update.message.reply_text(strings_reviewer["track_invalid"])
         return
 
     reviewer_group_id = str(TG_REVIEWER_GROUP)
@@ -446,8 +456,8 @@ async def send_custom_rejection_reason(
     # if the submission has not been rejected yet
     status = get_submission_status(submission_meta)
     if (
-        "已拒绝稿件" not in review_message.text_markdown_v2_urled
-        or status[1] == "通过后撤回"
+        strings_reviewer["rejected_title_marker"] not in review_message.text_markdown_v2_urled
+        or status[1] == strings_reviewer["retracted_status"]
     ):
         return
 
@@ -466,7 +476,7 @@ async def send_custom_rejection_reason(
             ReviewChoice.SFW,
             ReviewChoice.NSFW,
         ]:
-            await update.message.reply_text("😂 你没有投拒绝票")
+            await update.message.reply_text(strings_reviewer["no_reject_vote"])
             return
     # if the reviewer has rejected the duplicate submission without other reviewer rejecting it
     options = [
@@ -480,7 +490,7 @@ async def send_custom_rejection_reason(
         if submission_meta["reviewer"][reviewer_id][
             2
         ] == ReviewChoice.REJECT_DUPLICATE and approve_num + 1 == len(options):
-            await update.message.reply_text("😢 重复投稿一票否决不可修改理由")
+            await update.message.reply_text(strings_reviewer["duplicate_reason_locked"])
             return
         # if the reason has not been changed
         if submission_meta["reviewer"][reviewer_id][2] == reject_msg:
@@ -492,7 +502,7 @@ async def send_custom_rejection_reason(
         reject_msg,
     ]
     await send_to_rejected_channel(update, context, submission_meta, True)
-    await update.message.reply_text("✅ 已发送")
+    await update.message.reply_text(strings_reviewer["sent"])
     # delete the custom rejection reason message if the bot can
     try:
         await update.message.delete()
@@ -500,40 +510,40 @@ async def send_custom_rejection_reason(
         pass
 
 
-def get_decision(submission_meta, reviewer):
-    if reviewer not in submission_meta["reviewer"]:
-        return "😂 你还没有投票"
-    choice = "你已经选择了："
-    match submission_meta["reviewer"][reviewer][2]:
+def get_decision(submission_meta, reviewer_id):
+    if reviewer_id not in submission_meta["reviewer"]:
+        return strings_reviewer["no_vote"]
+    choice = strings_reviewer["choice_prefix"]
+    match submission_meta["reviewer"][reviewer_id][2]:
         case ReviewChoice.SFW:
-            choice += "🟢 通过"
+            choice += strings_reviewer["approve"]
         case ReviewChoice.NSFW:
-            choice += "🟡 以 NSFW 通过"
+            choice += strings_reviewer["approve_nsfw"]
         case ReviewChoice.REJECT:
-            choice += "🔴 拒绝"
+            choice += strings_reviewer["reject"]
     return choice
 
 
-def remove_decision(submission_meta, reviewer):
-    if reviewer in submission_meta["reviewer"]:
+def remove_decision(submission_meta, reviewer_id):
+    if reviewer_id in submission_meta["reviewer"]:
         reviewer_months = submission_meta.get("stats_month", {}).get(
             "reviewers", {}
         )
-        reviewer_month = reviewer_months.get(reviewer, current_month_key())
+        reviewer_month = reviewer_months.get(reviewer_id, current_month_key())
         # decrease reviewer count
-        if submission_meta["reviewer"][reviewer][2] in [
+        if submission_meta["reviewer"][reviewer_id][2] in [
             ReviewChoice.SFW,
             ReviewChoice.NSFW,
         ]:
             Reviewer.count_increase(
-                reviewer, "approve_count", -1, month=reviewer_month
+                reviewer_id, "approve_count", -1, month=reviewer_month
             )
         else:
             Reviewer.count_increase(
-                reviewer, "reject_count", -1, month=reviewer_month
+                reviewer_id, "reject_count", -1, month=reviewer_month
             )
-        reviewer_months.pop(reviewer, None)
-        del submission_meta["reviewer"][reviewer]
+        reviewer_months.pop(reviewer_id, None)
+        del submission_meta["reviewer"][reviewer_id]
         return submission_meta, True
     else:
         return submission_meta, False
@@ -550,21 +560,21 @@ async def retract_approved_submission(
         )
     )
     if query.from_user.id not in submission_meta["reviewer"]:
-        await query.answer("😂 你没有投票")
+        await query.answer(strings_reviewer["no_vote"])
         return
     if submission_meta["reviewer"][query.from_user.id][2] not in [
         ReviewChoice.SFW,
         ReviewChoice.NSFW,
     ]:
-        await query.answer("😂 你没有通过票")
+        await query.answer(strings_reviewer["no_approve_vote"])
         return
     try:
         for publish_channel, msg_ids in submission_meta["sent_msg"].items():
             await context.bot.delete_messages(
                 chat_id=publish_channel, message_ids=msg_ids
             )
-        await query.answer("↩️ 已撤回")
-        submission_meta["reviewer"][query.from_user.id][2] = "通过后撤回"
+        await query.answer(strings_reviewer["withdrawn"])
+        submission_meta["reviewer"][query.from_user.id][2] = strings_reviewer["retracted_status"]
         inline_keyboard = None
         await review_message.edit_text(
             text=generate_submission_meta_string(submission_meta),
@@ -577,7 +587,7 @@ async def retract_approved_submission(
                 context,
                 submission_meta["submitter"][0],
                 submission_meta["submitter"][3],
-                "😢 很抱歉，投稿被撤回。",
+                strings_submitter["retracted"],
             )
         # modify stats data
         result_month = submission_meta.get("stats_month", {}).get(
@@ -596,7 +606,7 @@ async def retract_approved_submission(
         )
     except:
         await query.answer(
-            "😢 无法撤回，可能是机器人权限不足或投稿通过已超过 48 小时"
+            strings_reviewer["retract_failed"]
         )
 
 
@@ -606,9 +616,9 @@ def get_rejection_reason_text(option):
         if option < len(REJECTION_REASON):
             option_text = REJECTION_REASON[option]
         elif option == len(REJECTION_REASON):  # JUST IGNORE IT!!
-            option_text = "忽略此投稿"
+            option_text = strings_reviewer["rejection_ignore"]
     elif option == ReviewChoice.REJECT_DUPLICATE:
-        option_text = "已在频道发布过或已有人投稿过"
+        option_text = strings_reviewer["rejection_duplicate"]
     else:
         option_text = option
     return option_text
@@ -658,13 +668,19 @@ def generate_submission_meta_string(submission_meta, longago_status=0):
     submitter_id, submitter_username, submitter_fullname, _ = submission_meta[
         "submitter"
     ]
-    submitter_string = f"投稿人：{generate_userinfo_str(id=int(submitter_id),username=submitter_username,fullname=submitter_fullname)}\n"
+    submitter_string = strings_reviewer["submitter_label"].format(
+        submitter=generate_userinfo_str(
+            id=int(submitter_id),
+            username=submitter_username,
+            fullname=submitter_fullname,
+        )
+    )
 
     # reviewers_string
     is_nsfw = False
-    reviewers_string = "审稿人："
+    reviewers_string = strings_reviewer["reviewers_label"]
     if status == SubmissionStatus.PENDING:
-        reviewers_string += "在结果公布前暂时隐藏"
+        reviewers_string += strings_reviewer["reviewers_hidden"]
     else:
         for reviewer_id, [
             reviewer_username,
@@ -675,31 +691,43 @@ def generate_submission_meta_string(submission_meta, longago_status=0):
             option_sign = ""
             match option:
                 case ReviewChoice.SFW:
-                    option_text = "以 SFW 通过"
+                    option_text = strings_reviewer["option_sfw"]
                     option_sign = "🟢"
                 case ReviewChoice.NSFW:
-                    option_text = "以 NSFW 通过"
+                    option_text = strings_reviewer["option_nsfw"]
                     option_sign = "🟡"
                     is_nsfw = True
                 case ReviewChoice.REJECT:
-                    option_text = "拒稿"
+                    option_text = strings_reviewer["option_reject"]
                     option_sign = "🔴"
                 case _:
-                    option_text = (
-                        f"因为 `{get_rejection_reason_text(option)}` 拒稿"
+                    option_text = strings_reviewer["option_reject_reason"].format(
+                        reason=get_rejection_reason_text(option)
                     )
                     option_sign = "🔴"
-            reviewers_string += f"\n\\- {option_sign} 由 {generate_userinfo_str(id=int(reviewer_id),fullname=reviewer_fullname,username=reviewer_username)} {option_text}"
+            reviewers_string += strings_reviewer["reviewer_line"].format(
+                sign=option_sign,
+                reviewer=generate_userinfo_str(
+                    id=int(reviewer_id),
+                    fullname=reviewer_fullname,
+                    username=reviewer_username,
+                ),
+                option=option_text,
+            )
 
     # append_string
-    append_string = "审稿人备注："
+    append_string = strings_reviewer["notes_label"]
     for reviewer_fullname, append_list in submission_meta["append"].items():
-        append_string += f"\n \\- 由 {sanitize_userinfo(escape_markdown(reviewer_fullname,version=2))} 添加的备注："
+        append_string += strings_reviewer["note_owner"].format(
+            reviewer=sanitize_userinfo(
+                escape_markdown(reviewer_fullname, version=2)
+            )
+        )
         append_string += "".join(
             f"\n    {i+1}\\. {escape_markdown(message,version=2)}" for i, message in enumerate(append_list)
         )
 
-    if append_string == "审稿人备注：":
+    if append_string == strings_reviewer["notes_label"]:
         append_string = ""
     else:
         append_string = "\n" + append_string + "\n"
@@ -709,26 +737,32 @@ def generate_submission_meta_string(submission_meta, longago_status=0):
     status_tag = ""
     match status:
         case SubmissionStatus.PENDING:
-            status_string = "待审稿"
+            status_string = strings_reviewer["status_pending"]
             status_tag = "#PENDING"
         case SubmissionStatus.APPROVED:
-            status_string = "以 NSFW 通过" if is_nsfw else "以 SFW 通过"
+            status_string = (
+                strings_reviewer["status_approved_nsfw"]
+                if is_nsfw
+                else strings_reviewer["status_approved_sfw"]
+            )
             status_tag = "#APPROVED #SFW" if not is_nsfw else "#APPROVED #NSFW"
         case SubmissionStatus.REJECTED:
-            status_string = f"因为 `{rejection_reason}` 被拒稿"
+            status_string = strings_reviewer["status_rejected"].format(
+                reason=rejection_reason
+            )
             status_tag = "#REJECTED"
         case SubmissionStatus.REJECTED_NO_REASON:
-            status_string = "被拒稿，待选择理由"
+            status_string = strings_reviewer["status_rejected_pending_reason"]
             status_tag = "#PENDING_FOR_REASON"
 
     # status_title
     status_title = (
-        "❔ 待审稿件"
+        strings_reviewer["title_pending"]
         if status == SubmissionStatus.PENDING
         else (
-            "✅ 已通过稿件"
+            strings_reviewer["title_approved"]
             if status == SubmissionStatus.APPROVED
-            else "❌ 已拒绝稿件"
+            else strings_reviewer["title_rejected"]
         )
     )
     # tags
@@ -739,7 +773,19 @@ def generate_submission_meta_string(submission_meta, longago_status=0):
     tags += f" {status_tag}"
 
     submission_meta_text = f"[\u200b](http://t.me/{base64.urlsafe_b64encode(pickle.dumps(submission_meta)).decode()})"
-    visible_content = status_title + "\n\n" + submitter_string + "\n" + reviewers_string + "\n" + append_string + "\n当前状态：" + status_string + "\n\n" + escape_markdown(tags,version=2)
+    visible_content = (
+        status_title
+        + "\n\n"
+        + submitter_string
+        + "\n"
+        + reviewers_string
+        + "\n"
+        + append_string
+        + "\n"
+        + strings_reviewer["current_status"].format(status=status_string)
+        + "\n\n"
+        + escape_markdown(tags, version=2)
+    )
 
     # use Zero-width non-joiner and fake url(or the bot api will delete invalid link) to hide the submission_meta
     return f"{visible_content}{submission_meta_text}"

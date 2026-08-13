@@ -11,6 +11,8 @@ from telegram.helpers import escape_markdown
 from db_op import IdempotencyRecord, Submitter, current_month_key
 from env import TG_EXPAND_LENGTH, TG_REVIEWER_GROUP, TG_REVIEWONLY
 from review_utils import reply_review_message
+from strings import channel as strings_channel
+from strings import submitter as strings_submitter
 from utils import (
     check_submission,
     send_result_to_submitter,
@@ -24,7 +26,7 @@ async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if TG_REVIEWONLY:
         await update.message.reply_text(
-            "本 Bot 已暂停使用。请查看频道获取更多信息",
+            strings_submitter["bot_paused"],
             do_quote=True,)
         return
 
@@ -62,25 +64,17 @@ async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton(
-                "署名投稿", callback_data=f"realname#{message.message_id}"
+                strings_submitter["realname"], callback_data=f"realname#{message.message_id}"
             ),
             InlineKeyboardButton(
-                "匿名投稿", callback_data=f"anonymous#{message.message_id}"
+                strings_submitter["anonymous"], callback_data=f"anonymous#{message.message_id}"
             ),
         ],
-        [InlineKeyboardButton("取消投稿", callback_data="cancel")],
+        [InlineKeyboardButton(strings_submitter["cancel"], callback_data="cancel")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        """❔确认投稿？（确认后无法编辑内容）
-
-请确认稿件不包含以下内容，否则可能不会被通过：
-- 过于哗众取宠、摆拍卖蠢（傻逼不算沙雕）
-- 火星救援
-- 纯链接（请投稿链接里的内容，如图片、视频等）
-- 恶俗性挂人
-
-稿件将由多位管理投票审核，每位管理的审核标准可能不一，投票制可以改善这类问题，但仍可能对部分圈内的梗不太熟悉，请您理解""",
+        strings_submitter["confirm"],
         do_quote=True,
         reply_markup=reply_markup,
     )
@@ -101,18 +95,18 @@ async def confirm_submission(
 
     if action == "cancel":
         if not IdempotencyRecord.claim(operation_key, "submission", action):
-            await query.answer("该投稿操作已经处理", show_alert=True)
+            await query.answer(strings_submitter["operation_processed"], show_alert=True)
             return
         await query.answer()
-        await query.edit_message_text(text="投稿已取消")
+        await query.edit_message_text(text=strings_submitter["cancelled"])
         IdempotencyRecord.complete(operation_key)
     elif action in ("anonymous", "realname"):
         record = IdempotencyRecord.get(operation_key)
         if record:
             message = (
-                "投稿正在处理中"
+                strings_submitter["processing"]
                 if record.status == "processing"
-                else "该投稿操作已经处理"
+                else strings_submitter["operation_processed"]
             )
             await query.answer(message, show_alert=True)
             return
@@ -121,9 +115,9 @@ async def confirm_submission(
         if not IdempotencyRecord.claim(operation_key, "submission", action):
             record = IdempotencyRecord.get(operation_key)
             message = (
-                "投稿正在处理中"
+                strings_submitter["processing"]
                 if record and record.status == "processing"
-                else "该投稿操作已经处理"
+                else strings_submitter["operation_processed"]
             )
             await query.answer(message, show_alert=True)
             return
@@ -145,7 +139,7 @@ async def confirm_submission(
             )
         # add forward origin
         if origin_message.forward_origin is not None:
-            forward_string = "\n\n_from_ "
+            forward_string = "\n\n" + strings_channel["source_prefix"]
             match origin_message.forward_origin.type:
                 case MessageOriginType.USER:
                     forward_string += f"[{escape_markdown(origin_message.forward_origin.sender_user.full_name,version=2,)}](tg://user?id={origin_message.forward_origin.sender_user.id})"
@@ -163,9 +157,9 @@ async def confirm_submission(
 
         # add submitter sign string
         if query.data.startswith("realname"):
-            sign_string = f"_via_ [{escape_markdown(user.full_name,version=2,)}](tg://user?id={user.id})"
+            sign_string = strings_channel["submitter_prefix"] + f"[{escape_markdown(user.full_name,version=2,)}](tg://user?id={user.id})"
             # if the last line is a forward message, put in the same line
-            if text.split("\n")[-1].startswith("_from_"):
+            if text.split("\n")[-1].startswith(strings_channel["source_prefix"].strip()):
                 text += " " + sign_string
             else:
                 text += "\n\n" + sign_string
@@ -252,7 +246,7 @@ async def confirm_submission(
             context,
             user.id,
             origin_message.message_id,
-            "❤️ 投稿成功，阿里嘎多！我们会在稍后通知您审核结果。",
+            strings_submitter["success"],
         )
 
         Submitter.count_increase(

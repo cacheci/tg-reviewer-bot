@@ -24,6 +24,9 @@ from review_utils import (
     send_to_rejected_channel,
 )
 from utils import send_result_to_submitter, send_submission
+from strings import channel as strings_channel
+from strings import reviewer as strings_reviewer
+from strings import submitter as strings_submitter
 
 
 def review_operation_key(review_message, reviewer_id):
@@ -61,10 +64,10 @@ async def approve_submission(
     submission_longago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
     # if the reviwer is the submitter
     if not TG_SELF_APPROVE and reviewer_id == submission_meta["submitter"][0]:
-        await query.answer("❌ 你不能给自己投通过票")
+        await query.answer(strings_reviewer["cannot_self_approve"])
         return
     if IdempotencyRecord.get(finalize_operation_key(review_message)):
-        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        await query.answer(strings_reviewer["submission_finalizing"], show_alert=True)
         return
 
     operation_key = review_operation_key(review_message, reviewer_id)
@@ -79,7 +82,7 @@ async def approve_submission(
         await query_decision(update, context)
         return
     if not IdempotencyRecord.claim_review(operation_key, str(action)):
-        await query.answer("该审核操作正在处理或已经完成", show_alert=True)
+        await query.answer(strings_reviewer["review_processed"], show_alert=True)
         return
 
     # if the reviewer has not rejected the submission
@@ -111,7 +114,7 @@ async def approve_submission(
             reply_markup=review_message.reply_markup,
         )
         await query.answer(
-            f"✅ 投票成功！{get_decision(submission_meta, reviewer_id)}"
+            strings_reviewer["vote_success"].format(decision=get_decision(submission_meta, reviewer_id))
         )
         IdempotencyRecord.complete(operation_key)
         return
@@ -121,9 +124,9 @@ async def approve_submission(
         finalization_key, "review_finalize", str(action)
     ):
         IdempotencyRecord.complete(operation_key)
-        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        await query.answer(strings_reviewer["submission_finalizing"], show_alert=True)
         return
-    await query.answer("✅ 投票成功，此条投稿已通过")
+    await query.answer(strings_reviewer["approved_success"])
     # increse submitter approved count
     result_month = current_month_key()
     stats_month["result"] = result_month
@@ -153,11 +156,11 @@ async def approve_submission(
         if ReviewChoice.NSFW in review_options:
             has_spoiler = True
             inline_keyboard = InlineKeyboardMarkup(
-                [[InlineKeyboardButton("跳到下一条", url=f"https://t.me/")]]
+                [[InlineKeyboardButton(strings_channel["next"], url=f"https://t.me/")]]
             )
             skip_all = await context.bot.send_message(
                 chat_id=publish_channel,
-                text="⚠️ #NSFW 提前预警",
+                text=strings_channel["nsfw_warning"],
                 reply_markup=inline_keyboard,
             )
         # get all append messages from submission_meta['append']
@@ -192,10 +195,10 @@ async def approve_submission(
             url_parts = sent_messages[-1].link.rsplit("/", 1)
             next_url = url_parts[0] + "/" + str(int(url_parts[-1]) + 1)
             inline_keyboard = InlineKeyboardMarkup(
-                [[InlineKeyboardButton("跳到下一条", url=next_url)]]
+                [[InlineKeyboardButton(strings_channel["next"], url=next_url)]]
             )
             await skip_all.edit_text(
-                text="⚠️ #NSFW 提前预警", reply_markup=inline_keyboard
+                text=strings_channel["nsfw_warning"], reply_markup=inline_keyboard
             )
         # add inline keyboard to jump to this submission and its comments in the publish channel
         sent_message_ids = [message.message_id for message in sent_messages]
@@ -207,20 +210,20 @@ async def approve_submission(
         [
             [
                 InlineKeyboardButton(
-                    "在频道中查看", url=main_channel_messages[0].link
+                    strings_channel["view"], url=main_channel_messages[0].link
                 ),
                 InlineKeyboardButton(
-                    "查看评论区",
+                    strings_channel["view_comments"],
                     url=f"{main_channel_messages[0].link}?comment=1",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "💬 回复投稿人",
+                    strings_reviewer["reply_submitter"],
                     switch_inline_query_current_chat="/comment ",
                 ),
                 InlineKeyboardButton(
-                    "↩️ 撤稿",
+                    strings_reviewer["withdraw_submission"],
                     callback_data=f"{ReviewChoice.APPROVED_RETRACT}",
                 ),
             ],
@@ -239,15 +242,15 @@ async def approve_submission(
         context,
         submission_meta["submitter"][0],
         submission_meta["submitter"][3],
-        "🎉 恭喜，投稿已通过审核",
+        strings_submitter["approved"],
         inline_keyboard_markup=InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
-                        "在频道中查看", url=main_channel_messages[0].link
+                        strings_channel["view"], url=main_channel_messages[0].link
                     ),
                     InlineKeyboardButton(
-                        "查看评论区",
+                        strings_channel["view_comments"],
                         url=f"{main_channel_messages[0].link}?comment=1",
                     ),
                 ]
@@ -278,7 +281,7 @@ async def reject_submission(
     stats_month = submission_meta.setdefault("stats_month", {})
     reviewer_months = stats_month.setdefault("reviewers", {})
     if IdempotencyRecord.get(finalize_operation_key(review_message)):
-        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        await query.answer(strings_reviewer["submission_finalizing"], show_alert=True)
         return
 
     operation_key = review_operation_key(review_message, reviewer_id)
@@ -293,7 +296,7 @@ async def reject_submission(
         await query_decision(update, context)
         return
     if not IdempotencyRecord.claim_review(operation_key, str(action)):
-        await query.answer("该审核操作正在处理或已经完成", show_alert=True)
+        await query.answer(strings_reviewer["review_processed"], show_alert=True)
         return
 
     submission_longago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
@@ -312,15 +315,15 @@ async def reject_submission(
         ):
             IdempotencyRecord.complete(operation_key)
             await query.answer(
-                "此条投稿正在处理或已经处理完成", show_alert=True
+                strings_reviewer["submission_finalizing"], show_alert=True
             )
             return
-        await query.answer("✅ 投票成功，此条投稿已被拒绝")
+        await query.answer(strings_reviewer["rejected_success"])
         inline_keyboard_content = []
         inline_keyboard_content.append(
             [
                 InlineKeyboardButton(
-                    "💬 回复投稿人",
+                    strings_reviewer["reply_submitter"],
                     switch_inline_query_current_chat="/comment ",
                 )
             ]
@@ -384,7 +387,7 @@ async def reject_submission(
             reply_markup=review_message.reply_markup,
         )
         await query.answer(
-            f"✅ 投票成功！{get_decision(submission_meta, reviewer_id)}"
+            strings_reviewer["vote_success"].format(decision=get_decision(submission_meta, reviewer_id))
         )
         IdempotencyRecord.complete(operation_key)
         return
@@ -394,9 +397,9 @@ async def reject_submission(
         finalization_key, "review_finalize", str(action)
     ):
         IdempotencyRecord.complete(operation_key)
-        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        await query.answer(strings_reviewer["submission_finalizing"], show_alert=True)
         return
-    await query.answer("✅ 投票成功，此条投稿已被拒绝")
+    await query.answer(strings_reviewer["rejected_success"])
     # increse submitter rejected count
     result_month = current_month_key()
     stats_month["result"] = result_month
@@ -436,16 +439,16 @@ async def reject_submission(
     inline_keyboard_content.append(
         [
             InlineKeyboardButton(
-                "自定义理由",
+                strings_reviewer["custom_reason"],
                 switch_inline_query_current_chat="/reject ",
             ),
-            InlineKeyboardButton("忽略此投稿", callback_data="REASON.IGNORE"),
+            InlineKeyboardButton(strings_reviewer["ignore_submission"], callback_data="REASON.IGNORE"),
         ]
     )
     inline_keyboard_content.append(
         [
             InlineKeyboardButton(
-                "💬 回复投稿人",
+                strings_reviewer["reply_submitter"],
                 switch_inline_query_current_chat="/comment ",
             )
         ]
@@ -464,14 +467,14 @@ async def query_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
     review_message = update.effective_message
-    reviewer = query.from_user.id
+    reviewer_id = query.from_user.id
     submission_meta = pickle.loads(
         base64.urlsafe_b64decode(
             review_message.text_markdown_v2_urled.split("/")[-1][:-1]
         )
     )
 
-    await query.answer(get_decision(submission_meta, reviewer))
+    await query.answer(get_decision(submission_meta, reviewer_id))
 
 
 async def withdraw_decision(
@@ -480,31 +483,31 @@ async def withdraw_decision(
     query = update.callback_query
 
     review_message = update.effective_message
-    reviewer = query.from_user.id
+    reviewer_id = query.from_user.id
     submission_meta = pickle.loads(
         base64.urlsafe_b64decode(
             review_message.text_markdown_v2_urled.split("/")[-1][:-1]
         )
     )
     if IdempotencyRecord.get(finalize_operation_key(review_message)):
-        await query.answer("此条投稿正在处理或已经处理完成", show_alert=True)
+        await query.answer(strings_reviewer["submission_finalizing"], show_alert=True)
         return
 
-    operation_key = review_operation_key(review_message, reviewer)
-    if reviewer in submission_meta["reviewer"] and not IdempotencyRecord.get(
+    operation_key = review_operation_key(review_message, reviewer_id)
+    if reviewer_id in submission_meta["reviewer"] and not IdempotencyRecord.get(
         operation_key
     ):
         IdempotencyRecord.claim(
             operation_key,
             "review",
-            str(submission_meta["reviewer"][reviewer][2]),
+            str(submission_meta["reviewer"][reviewer_id][2]),
         )
         IdempotencyRecord.complete(operation_key)
     if not IdempotencyRecord.claim_withdraw(operation_key):
-        await query.answer("没有可撤回的投票，或撤回正在处理中", show_alert=True)
+        await query.answer(strings_reviewer["withdraw_unavailable"], show_alert=True)
         return
 
-    submission_meta, removed = remove_decision(submission_meta, reviewer)
+    submission_meta, removed = remove_decision(submission_meta, reviewer_id)
     if removed:
         await review_message.edit_text(
             text=generate_submission_meta_string(submission_meta),
@@ -512,7 +515,7 @@ async def withdraw_decision(
             reply_markup=review_message.reply_markup,
         )
         IdempotencyRecord.complete(operation_key)
-        await query.answer("↩️ 已撤回")
+        await query.answer(strings_reviewer["withdrawn"])
     else:
         IdempotencyRecord.complete(operation_key)
-        await query.answer("😂 你还没有投票")
+        await query.answer(strings_reviewer["no_vote"])
