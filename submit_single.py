@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 from telegram.helpers import escape_markdown
 
-from db_op import Submitter
+from db_op import Submitter, current_month_key
 from env import TG_EXPAND_LENGTH, TG_REVIEWER_GROUP, TG_REVIEWONLY
 from review_utils import reply_review_message
 from utils import (
@@ -223,6 +223,7 @@ async def confirm_submission(
             text=text.strip(),
         )
 
+        submission_month = current_month_key()
         submission_meta = {
             "submitter": [
                 user.id,
@@ -237,6 +238,10 @@ async def confirm_submission(
             "documents_id_list": submission["document_id_list"],
             "document_type_list": submission["document_type_list"],
             "append": {},
+            "stats_month": {
+                "submission": submission_month,
+                "reviewers": {},
+            },
         }
 
         await reply_review_message(
@@ -250,7 +255,9 @@ async def confirm_submission(
             "❤️ 投稿成功，阿里嘎多！我们会在稍后通知您审核结果。",
         )
 
-        Submitter.count_increase(user.id, "submission_count")
+        Submitter.count_increase(
+            user.id, "submission_count", month=submission_month
+        )
         Submitter.add_count_in_hour(user.id)
 
 

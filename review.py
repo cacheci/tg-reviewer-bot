@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from db_op import Reviewer, Submitter
+from db_op import Reviewer, Submitter, current_month_key
 from env import (
     APPROVE_NUMBER_REQUIRED,
     REJECT_NUMBER_REQUIRED,
@@ -44,6 +44,8 @@ async def approve_submission(
             review_message.text_markdown_v2_urled.split("/")[-1][:-1]
         )
     )
+    stats_month = submission_meta.setdefault("stats_month", {})
+    reviewer_months = stats_month.setdefault("reviewers", {})
 
     submission_longago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
     already_choose = False
@@ -71,7 +73,11 @@ async def approve_submission(
 
     # increse reviewer approve count
     if not already_choose:
-        Reviewer.count_increase(reviewer_id, "approve_count")
+        reviewer_month = current_month_key()
+        reviewer_months[reviewer_id] = reviewer_month
+        Reviewer.count_increase(
+            reviewer_id, "approve_count", month=reviewer_month
+        )
 
     # get options from all reviewers
     review_options = [
@@ -94,14 +100,24 @@ async def approve_submission(
     # else if the submission has been approved by enough reviewers
     await query.answer("✅ 投票成功，此条投稿已通过")
     # increse submitter approved count
-    Submitter.count_increase(submission_meta["submitter"][0], "approved_count")
+    result_month = current_month_key()
+    stats_month["result"] = result_month
+    Submitter.count_increase(
+        submission_meta["submitter"][0],
+        "approved_count",
+        month=result_month,
+    )
     # increse reviewer count
     for reviewer_id in submission_meta["reviewer"]:
         if submission_meta["reviewer"][reviewer_id][2] not in [
             ReviewChoice.SFW,
             ReviewChoice.NSFW,
         ]:
-            Reviewer.count_increase(reviewer_id, "reject_but_approved_count")
+            Reviewer.count_increase(
+                reviewer_id,
+                "reject_but_approved_count",
+                month=reviewer_months.get(reviewer_id, current_month_key()),
+            )
     # then send this submission to the publish channel
     main_channel_messages = None
     submission_meta["sent_msg"] = {}
@@ -232,6 +248,8 @@ async def reject_submission(
             review_message.text_markdown_v2_urled.split("/")[-1][:-1]
         )
     )
+    stats_month = submission_meta.setdefault("stats_month", {})
+    reviewer_months = stats_month.setdefault("reviewers", {})
 
     submission_longago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
     # if REJECT_DUPLICATE, only one reviewer is enough
@@ -243,6 +261,8 @@ async def reject_submission(
             reviewer_fullname,
             action,
         ]
+        reviewer_month = current_month_key()
+        reviewer_months[reviewer_id] = reviewer_month
         await query.answer("✅ 投票成功，此条投稿已被拒绝")
         inline_keyboard_content = []
         inline_keyboard_content.append(
@@ -259,18 +279,28 @@ async def reject_submission(
         )
 
         # increse submitter rejected count
+        result_month = current_month_key()
+        stats_month["result"] = result_month
         Submitter.count_increase(
-            submission_meta["submitter"][0], "rejected_count"
+            submission_meta["submitter"][0],
+            "rejected_count",
+            month=result_month,
         )
         # increse reviewer count
-        Reviewer.count_increase(reviewer_id, "reject_count")
+        Reviewer.count_increase(
+            reviewer_id, "reject_count", month=reviewer_month
+        )
         for reviewer_id in submission_meta["reviewer"]:
             if submission_meta["reviewer"][reviewer_id][2] in [
                 ReviewChoice.SFW,
                 ReviewChoice.NSFW,
             ]:
                 Reviewer.count_increase(
-                    reviewer_id, "approve_but_rejected_count"
+                    reviewer_id,
+                    "approve_but_rejected_count",
+                    month=reviewer_months.get(
+                        reviewer_id, current_month_key()
+                    ),
                 )
         return
     # else if the reviewer has already approved or rejected the submission
@@ -283,8 +313,12 @@ async def reject_submission(
         reviewer_fullname,
         action,
     ]
+    reviewer_month = current_month_key()
+    reviewer_months[reviewer_id] = reviewer_month
     # increse reviewer reject count
-    Reviewer.count_increase(reviewer_id, "reject_count")
+    Reviewer.count_increase(
+        reviewer_id, "reject_count", month=reviewer_month
+    )
     # get options from all reviewers
     review_options = [
         reviewer[2] for reviewer in submission_meta["reviewer"].values()
@@ -306,14 +340,24 @@ async def reject_submission(
     # else if the submission has been rejected by enough reviewers
     await query.answer("✅ 投票成功，此条投稿已被拒绝")
     # increse submitter rejected count
-    Submitter.count_increase(submission_meta["submitter"][0], "rejected_count")
+    result_month = current_month_key()
+    stats_month["result"] = result_month
+    Submitter.count_increase(
+        submission_meta["submitter"][0],
+        "rejected_count",
+        month=result_month,
+    )
     # increse reviewer count
     for reviewer_id in submission_meta["reviewer"]:
         if submission_meta["reviewer"][reviewer_id][2] in [
             ReviewChoice.SFW,
             ReviewChoice.NSFW,
         ]:
-            Reviewer.count_increase(reviewer_id, "approve_but_rejected_count")
+            Reviewer.count_increase(
+                reviewer_id,
+                "approve_but_rejected_count",
+                month=reviewer_months.get(reviewer_id, current_month_key()),
+            )
     # send the rejection reason options inline keyboard
     # show inline keyboard in 2 cols
     inline_keyboard_content = []

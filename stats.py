@@ -5,10 +5,51 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 
-from db_op import Reviewer, Submitter
+from db_op import Reviewer, Submitter, current_month_key
 from env import TG_REVIEWER_GROUP
 
 import re
+
+
+def format_submitter_stats(submitter_info):
+    submission_count = submitter_info.submission_count if submitter_info else 0
+    approved_count = submitter_info.approved_count if submitter_info else 0
+    rejected_count = submitter_info.rejected_count if submitter_info else 0
+    decided_count = approved_count + rejected_count
+    approval_rate = approved_count / decided_count * 100 if decided_count else 0.0
+    return (
+        f"投稿数量: {submission_count}\n"
+        f"通过数量: {approved_count}\n"
+        f"拒绝数量: {rejected_count}\n"
+        f"投稿通过率: {approval_rate:.2f}%"
+    )
+
+
+def format_reviewer_stats(reviewer_info):
+    approve_count = reviewer_info.approve_count if reviewer_info else 0
+    reject_count = reviewer_info.reject_count if reviewer_info else 0
+    approve_but_rejected_count = (
+        reviewer_info.approve_but_rejected_count if reviewer_info else 0
+    )
+    reject_but_approved_count = (
+        reviewer_info.reject_but_approved_count if reviewer_info else 0
+    )
+    last_time = reviewer_info.last_time if reviewer_info else "无"
+    return dedent(
+        f"""
+        审核数量: {approve_count + reject_count}
+        通过数量: {approve_count}
+        拒稿数量: {reject_count}
+        通过但稿件被拒数量: {approve_but_rejected_count}
+        拒稿但稿件通过数量: {reject_but_approved_count}
+
+        通过但稿件被拒数量 / 通过数量: {approve_but_rejected_count / approve_count * 100 if approve_count else 0.0:.2f}%
+        拒稿但稿件通过数量 / 拒稿数量: {reject_but_approved_count / reject_count * 100 if reject_count else 0.0:.2f}%
+
+        最后一次审核时间: {last_time}
+        """
+    ).strip()
+
 
 async def submitter_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -47,13 +88,22 @@ async def submitter_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN_V2,
         )
         return
-    submitter_info = Submitter.get_submitter(submitter_id)
-    if not submitter_info or not submitter_info.submission_count:
+    month = current_month_key()
+    monthly_info = Submitter.get_monthly_stats(submitter_id, month)
+    total_info = Submitter.get_submitter(submitter_id)
+    if not monthly_info and not total_info:
         await update.message.reply_text("还没有投稿过任何内容")
         return
-    reply_string = "*\\=\\= 基础信息 \\=\\=*\n" + escape_markdown(
-        f"投稿数量: {submitter_info.submission_count}\n通过数量: {submitter_info.approved_count}\n拒绝数量: {submitter_info.rejected_count}\n投稿通过率: {submitter_info.approved_count / (submitter_info.rejected_count + submitter_info.approved_count) * 100:.2f}%\n\n#USER_{submitter_id} #SUBMITTER_{submitter_id}",
-        version=2,
+    escaped_month = escape_markdown(month, version=2)
+    reply_string = (
+        f"*\\=\\= {escaped_month} 月度统计 \\=\\=*\n"
+        + escape_markdown(format_submitter_stats(monthly_info), version=2)
+        + "\n\n*\\=\\= 总统计 \\=\\=*\n"
+        + escape_markdown(
+            f"{format_submitter_stats(total_info)}\n\n"
+            f"#USER_{submitter_id} #SUBMITTER_{submitter_id}",
+            version=2,
+        )
     )
     await update.message.reply_text(
         reply_string, parse_mode=ParseMode.MARKDOWN_V2
@@ -80,27 +130,21 @@ async def reviewer_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN_V2,
         )
         return
-    reviewer_info = Reviewer.get_reviewer(reviewer_id)
-    if not reviewer_info:
+    month = current_month_key()
+    monthly_info = Reviewer.get_monthly_stats(reviewer_id, month)
+    total_info = Reviewer.get_reviewer(reviewer_id)
+    if not monthly_info and not total_info:
         await update.message.reply_text("还没有审核过任何内容")
         return
-    reply_string = "*\\=\\= 基础信息 \\=\\=*\n" + escape_markdown(
-        dedent(
-            f"""
-        审核数量: {reviewer_info.approve_count + reviewer_info.reject_count}
-        通过数量: {reviewer_info.approve_count}
-        拒稿数量: {reviewer_info.reject_count}
-        通过但稿件被拒数量: {reviewer_info.approve_but_rejected_count}
-        拒稿但稿件通过数量: {reviewer_info.reject_but_approved_count}
-        
-        通过但稿件被拒数量 / 通过数量: {reviewer_info.approve_but_rejected_count / reviewer_info.approve_count * 100 if reviewer_info.approve_count else 0.0:.2f}%
-        拒稿但稿件通过数量 / 拒稿数量: {reviewer_info.reject_but_approved_count / reviewer_info.reject_count * 100 if reviewer_info.reject_count else 0.0:.2f}%
-        
-        最后一次审核时间: {reviewer_info.last_time}
-        
-        #REVIEWER_{reviewer_id}"""
-        ),
-        version=2,
+    escaped_month = escape_markdown(month, version=2)
+    reply_string = (
+        f"*\\=\\= {escaped_month} 月度统计 \\=\\=*\n"
+        + escape_markdown(format_reviewer_stats(monthly_info), version=2)
+        + "\n\n*\\=\\= 总统计 \\=\\=*\n"
+        + escape_markdown(
+            f"{format_reviewer_stats(total_info)}\n\n#REVIEWER_{reviewer_id}",
+            version=2,
+        )
     )
     await update.message.reply_text(
         reply_string, parse_mode=ParseMode.MARKDOWN_V2

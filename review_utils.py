@@ -9,7 +9,7 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 
-from db_op import Reviewer, Submitter
+from db_op import Reviewer, Submitter, current_month_key
 from env import (
     APPROVE_NUMBER_REQUIRED,
     REJECT_NUMBER_REQUIRED,
@@ -516,14 +516,23 @@ def get_decision(submission_meta, reviewer):
 
 def remove_decision(submission_meta, reviewer):
     if reviewer in submission_meta["reviewer"]:
+        reviewer_months = submission_meta.get("stats_month", {}).get(
+            "reviewers", {}
+        )
+        reviewer_month = reviewer_months.get(reviewer, current_month_key())
         # decrease reviewer count
         if submission_meta["reviewer"][reviewer][2] in [
             ReviewChoice.SFW,
             ReviewChoice.NSFW,
         ]:
-            Reviewer.count_increase(reviewer, "approve_count", -1)
+            Reviewer.count_increase(
+                reviewer, "approve_count", -1, month=reviewer_month
+            )
         else:
-            Reviewer.count_increase(reviewer, "reject_count", -1)
+            Reviewer.count_increase(
+                reviewer, "reject_count", -1, month=reviewer_month
+            )
+        reviewer_months.pop(reviewer, None)
         del submission_meta["reviewer"][reviewer]
         return submission_meta, True
     else:
@@ -571,11 +580,19 @@ async def retract_approved_submission(
                 "😢 很抱歉，投稿被撤回。",
             )
         # modify stats data
-        Submitter.count_increase(
-            submission_meta["submitter"][0], "approved_count", -1
+        result_month = submission_meta.get("stats_month", {}).get(
+            "result", current_month_key()
         )
         Submitter.count_increase(
-            submission_meta["submitter"][0], "rejected_count"
+            submission_meta["submitter"][0],
+            "approved_count",
+            -1,
+            month=result_month,
+        )
+        Submitter.count_increase(
+            submission_meta["submitter"][0],
+            "rejected_count",
+            month=current_month_key(),
         )
     except:
         await query.answer(

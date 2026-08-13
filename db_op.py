@@ -15,6 +15,11 @@ from typing_extensions import Annotated
 
 from env import TG_DB_URL, TG_DEFAULT_MAX_SUBMISSION_PER_HOUR
 
+
+def current_month_key():
+    return datetime.now().strftime("%Y-%m")
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -84,7 +89,7 @@ class Submitter(Base):
             return None
 
     @staticmethod
-    def count_increase(user_id, column_name, num=1):
+    def count_increase(user_id, column_name, num=1, month=None):
         # check submitter exist or not first
         if not db.select(Submitter, Submitter.user_id == user_id):
             db.insert(
@@ -103,6 +108,9 @@ class Submitter(Base):
             Submitter,
             Submitter.user_id == user_id,
             **{column_name: current_count + num},
+        )
+        SubmitterMonthlyStats.count_increase(
+            user_id, column_name, num, month or current_month_key()
         )
 
     @staticmethod
@@ -206,6 +214,58 @@ class Submitter(Base):
             return db.select(Submitter, Submitter.user_id == user_id)[0]
         except IndexError:
             print(f"IndexError: Submitter {user_id} not found")
+            return None
+
+    @staticmethod
+    def get_monthly_stats(user_id, month=None):
+        return SubmitterMonthlyStats.get_stats(
+            user_id, month or current_month_key()
+        )
+
+
+class SubmitterMonthlyStats(Base):
+    __tablename__ = "submitter_monthly_stats"
+    user_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)
+    submission_count: Mapped[int] = mapped_column(default=0)
+    approved_count: Mapped[int] = mapped_column(default=0)
+    rejected_count: Mapped[int] = mapped_column(default=0)
+
+    @staticmethod
+    def count_increase(user_id, column_name, num, month):
+        condition = (
+            (SubmitterMonthlyStats.user_id == str(user_id))
+            & (SubmitterMonthlyStats.month == month)
+        )
+        if not db.select(SubmitterMonthlyStats, condition):
+            if num < 0:
+                return
+            db.insert(
+                SubmitterMonthlyStats,
+                user_id=str(user_id),
+                month=month,
+                submission_count=0,
+                approved_count=0,
+                rejected_count=0,
+            )
+        current_count = db.select_column(
+            SubmitterMonthlyStats, column_name, condition
+        )
+        db.update(
+            SubmitterMonthlyStats,
+            condition,
+            **{column_name: max(0, current_count + num)},
+        )
+
+    @staticmethod
+    def get_stats(user_id, month):
+        try:
+            return db.select(
+                SubmitterMonthlyStats,
+                (SubmitterMonthlyStats.user_id == str(user_id))
+                & (SubmitterMonthlyStats.month == month),
+            )[0]
+        except IndexError:
             return None
 
 
@@ -326,7 +386,7 @@ class Reviewer(Base):
         return f"Reviewer(User ID: {self.user_id}, Approve Count: {self.approve_count}, Reject Count: {self.reject_count}, Approve but Rejected Count: {self.approve_but_rejected_count}, Reject but Approved Count: {self.reject_but_approved_count}, Last Date: {self.last_time})"
 
     @staticmethod
-    def count_increase(user_id, column_name, num=1):
+    def count_increase(user_id, column_name, num=1, month=None):
         # check reviewer exist or not first
         if not db.select(Reviewer, Reviewer.user_id == user_id):
             db.insert(
@@ -345,6 +405,9 @@ class Reviewer(Base):
             Reviewer.user_id == user_id,
             **{column_name: current_count + num},
         )
+        ReviewerMonthlyStats.count_increase(
+            user_id, column_name, num, month or current_month_key()
+        )
 
     @staticmethod
     def get_reviewers():
@@ -356,6 +419,62 @@ class Reviewer(Base):
             return db.select(Reviewer, Reviewer.user_id == user_id)[0]
         except IndexError:
             print(f"IndexError: Reviewer {user_id} not found")
+            return None
+
+    @staticmethod
+    def get_monthly_stats(user_id, month=None):
+        return ReviewerMonthlyStats.get_stats(
+            user_id, month or current_month_key()
+        )
+
+
+class ReviewerMonthlyStats(Base):
+    __tablename__ = "reviewer_monthly_stats"
+    user_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)
+    approve_count: Mapped[int] = mapped_column(default=0)
+    reject_count: Mapped[int] = mapped_column(default=0)
+    approve_but_rejected_count: Mapped[int] = mapped_column(default=0)
+    reject_but_approved_count: Mapped[int] = mapped_column(default=0)
+    last_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    @staticmethod
+    def count_increase(user_id, column_name, num, month):
+        condition = (
+            (ReviewerMonthlyStats.user_id == str(user_id))
+            & (ReviewerMonthlyStats.month == month)
+        )
+        if not db.select(ReviewerMonthlyStats, condition):
+            if num < 0:
+                return
+            db.insert(
+                ReviewerMonthlyStats,
+                user_id=str(user_id),
+                month=month,
+                approve_count=0,
+                reject_count=0,
+                approve_but_rejected_count=0,
+                reject_but_approved_count=0,
+            )
+        current_count = db.select_column(
+            ReviewerMonthlyStats, column_name, condition
+        )
+        values = {column_name: max(0, current_count + num)}
+        if num > 0 and column_name in ("approve_count", "reject_count"):
+            values["last_time"] = datetime.now()
+        db.update(ReviewerMonthlyStats, condition, **values)
+
+    @staticmethod
+    def get_stats(user_id, month):
+        try:
+            return db.select(
+                ReviewerMonthlyStats,
+                (ReviewerMonthlyStats.user_id == str(user_id))
+                & (ReviewerMonthlyStats.month == month),
+            )[0]
+        except IndexError:
             return None
 
 
