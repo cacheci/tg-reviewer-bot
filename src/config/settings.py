@@ -55,6 +55,9 @@ if data_dir is not None:
 
             TG_RETRACT_NOTIFY           = data.get('non_required', {}).get('TG_RETRACT_NOTIFY', True)
             TG_BANNED_NOTIFY            = data.get('non_required', {}).get('TG_BANNED_NOTIFY', True)
+            TG_IMAGE_DUPLICATE_CHECK    = data.get('non_required', {}).get('TG_IMAGE_DUPLICATE_CHECK', False)
+            TG_IMAGE_DUPLICATE_DAYS     = int(str(data.get('non_required', {}).get('TG_IMAGE_DUPLICATE_DAYS', 7)))
+            TG_IMAGE_DUPLICATE_THRESHOLD = int(str(data.get('non_required', {}).get('TG_IMAGE_DUPLICATE_THRESHOLD', 5)))
 
     except (json.JSONDecodeError) as e:
         raise EnvironmentError("Warning: Config JSON found decode failed!")
@@ -86,6 +89,7 @@ else:
         TG_BANNED_NOTIFY                = os.getenv("TG_BANNED_NOTIFY", "True")     == "True"
         TG_REJECT_REASON_USER_LIMIT     = os.getenv("TG_REJECT_REASON_USER_LIMIT", "True") == "True"
         TG_REVIEWONLY                   = os.getenv("TG_REVIEWONLY", "False")       == "True"
+        TG_IMAGE_DUPLICATE_CHECK        = os.getenv("TG_IMAGE_DUPLICATE_CHECK", "False") == "True"
 
         # int
         try:
@@ -112,6 +116,16 @@ else:
             TG_DEFAULT_MAX_SUBMISSION_PER_HOUR = int(os.getenv("TG_DEFAULT_MAX_SUBMISSION_PER_HOUR", 5))
         except (TypeError, ValueError):
             TG_DEFAULT_MAX_SUBMISSION_PER_HOUR = 20
+
+        try:
+            TG_IMAGE_DUPLICATE_DAYS     = int(os.getenv("TG_IMAGE_DUPLICATE_DAYS", 7))
+        except (TypeError, ValueError):
+            TG_IMAGE_DUPLICATE_DAYS     = 7
+
+        try:
+            TG_IMAGE_DUPLICATE_THRESHOLD = int(os.getenv("TG_IMAGE_DUPLICATE_THRESHOLD", 5))
+        except (TypeError, ValueError):
+            TG_IMAGE_DUPLICATE_THRESHOLD = 5
 
         # string
         TG_REJECTED_CHANNEL             = os.environ.get("TG_REJECTED_CHANNEL")
