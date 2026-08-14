@@ -22,7 +22,7 @@ logging.basicConfig(
     level=getattr(logging, log_level.upper())
 )
 
-from ban import (
+from src.moderation.handlers import (
     ban_origin,
     ban_user,
     list_banned_origins,
@@ -30,14 +30,14 @@ from ban import (
     unban_origin,
     unban_user,
 )
-from env import TG_BOT_USERNAME, TG_REVIEWER_GROUP, TG_TOKEN, TG_CUSTOMAPI
-from review import (
+from src.config.settings import TG_BOT_USERNAME, TG_REVIEWER_GROUP, TG_TOKEN, TG_CUSTOMAPI
+from src.review.handlers import (
     approve_submission,
     query_decision,
     reject_submission,
     withdraw_decision,
 )
-from review_utils import (
+from src.review.utils import (
     ReviewChoice,
     append_message,
     comment_message,
@@ -47,14 +47,14 @@ from review_utils import (
     send_custom_rejection_reason,
     track_message,
 )
-from stats import (
+from src.statistics.handlers import (
     get_set_default_max_submission_per_hour,
     get_set_submitter_max_submission_per_hour,
     reset_submitter_max_submission_per_hour,
     reviewer_stats,
     submitter_stats,
 )
-from utils import PrefixFilter, on_init
+from src.common.utils import PrefixFilter, on_init
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -77,7 +77,7 @@ if __name__ == "__main__":
         .build()
     )
 
-    from submit_single import confirm_submit_handler, submission_handler
+    from src.submission.handlers import confirm_submit_handler, submission_handler
 
     application.add_handler(confirm_submit_handler)
     application.add_handler(submission_handler)

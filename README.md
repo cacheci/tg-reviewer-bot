@@ -77,7 +77,7 @@ Telegram 投稿/审稿机器人，基于 Telegram Bot API 7.1 以及 python-tele
 
 ## 安装与部署
 
-设置环境变量，安装 `python-telegram-bot v21.0.1` 库，运行 `main.py` 文件即可。代码使用 python3 编写。
+设置环境变量并安装依赖后，在项目根目录执行 `python -m src.main` 启动机器人。代码使用 python3 编写。
 
 ## 技术支持与贡献
 

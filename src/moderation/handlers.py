@@ -3,9 +3,9 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 
-from db_op import Banned_origin, Banned_user
-from utils import get_name_from_uid, is_integer, generate_userinfo_str
-from strings import others as strings_others
+from src.database.operations import Banned_origin, Banned_user
+from src.common.utils import get_name_from_uid, is_integer, generate_userinfo_str
+from src.strings import others as strings_others
 
 import re
 

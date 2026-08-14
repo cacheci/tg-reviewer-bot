@@ -10,11 +10,11 @@ from telegram import (
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from telegram.ext.filters import MessageFilter
-from db_op import Banned_origin, Banned_user, Submitter
+from src.database.operations import Banned_origin, Banned_user, Submitter
 from telegram.helpers import escape_markdown
-from env import TG_BANNED_NOTIFY, TG_TEXT_SPOILER, TG_REVIEWER_GROUP
-from strings import others as strings_others
-from strings import submitter as strings_submitter
+from src.config.settings import TG_BANNED_NOTIFY, TG_TEXT_SPOILER, TG_REVIEWER_GROUP
+from src.strings import others as strings_others
+from src.strings import submitter as strings_submitter
 
 
 class PrefixFilter(MessageFilter):

@@ -5,7 +5,8 @@ from pathlib import Path
 from threading import RLock
 
 
-STRINGS_PATH = Path(__file__).with_name("strings.json")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+STRINGS_PATH = PROJECT_ROOT / "assets" / "strings.json"
 STRING_CATEGORIES = ("reviewer", "submitter", "channel", "others")
 
 _lock = RLock()

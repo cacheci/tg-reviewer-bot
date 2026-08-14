@@ -9,8 +9,8 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 
-from db_op import Reviewer, Submitter, current_month_key
-from env import (
+from src.database.operations import Reviewer, Submitter, current_month_key
+from src.config.settings import (
     APPROVE_NUMBER_REQUIRED,
     REJECT_NUMBER_REQUIRED,
     REJECTION_REASON,
@@ -20,10 +20,10 @@ from env import (
     TG_RETRACT_NOTIFY,
     TG_REVIEWER_GROUP,
 )
-from utils import send_result_to_submitter, send_submission, sanitize_userinfo, generate_userinfo_str
-from strings import channel as strings_channel
-from strings import reviewer as strings_reviewer
-from strings import submitter as strings_submitter
+from src.common.utils import send_result_to_submitter, send_submission, sanitize_userinfo, generate_userinfo_str
+from src.strings import channel as strings_channel
+from src.strings import reviewer as strings_reviewer
+from src.strings import submitter as strings_submitter
 
 """
 submission_meta = {

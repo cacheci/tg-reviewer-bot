@@ -1,5 +1,5 @@
 import os, json, re, logging
-from strings import others as strings_others
+from src.strings import others as strings_others
 
 logger = logging.getLogger(__name__)
 

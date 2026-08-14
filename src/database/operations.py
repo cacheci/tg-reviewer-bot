@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from typing_extensions import Annotated
 
-from env import TG_DB_URL, TG_DEFAULT_MAX_SUBMISSION_PER_HOUR
+from src.config.settings import TG_DB_URL, TG_DEFAULT_MAX_SUBMISSION_PER_HOUR
 
 
 def current_month_key():

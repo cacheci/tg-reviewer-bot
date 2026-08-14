@@ -6,8 +6,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from db_op import IdempotencyRecord, Reviewer, Submitter, current_month_key
-from env import (
+from src.database.operations import IdempotencyRecord, Reviewer, Submitter, current_month_key
+from src.config.settings import (
     APPROVE_NUMBER_REQUIRED,
     REJECT_NUMBER_REQUIRED,
     REJECTION_REASON,
@@ -15,7 +15,7 @@ from env import (
     TG_SELF_APPROVE,
     TG_TIMEOUT_SINGLEREVIEW,
 )
-from review_utils import (
+from src.review.utils import (
     ReviewChoice,
     SubmissionStatus,
     generate_submission_meta_string,
@@ -23,10 +23,10 @@ from review_utils import (
     remove_decision,
     send_to_rejected_channel,
 )
-from utils import send_result_to_submitter, send_submission
-from strings import channel as strings_channel
-from strings import reviewer as strings_reviewer
-from strings import submitter as strings_submitter
+from src.common.utils import send_result_to_submitter, send_submission
+from src.strings import channel as strings_channel
+from src.strings import reviewer as strings_reviewer
+from src.strings import submitter as strings_submitter
 
 
 def review_operation_key(review_message, reviewer_id):

@@ -8,12 +8,12 @@ from telegram.ext import (
 )
 from telegram.helpers import escape_markdown
 
-from db_op import IdempotencyRecord, Submitter, current_month_key
-from env import TG_EXPAND_LENGTH, TG_REVIEWER_GROUP, TG_REVIEWONLY
-from review_utils import reply_review_message
-from strings import channel as strings_channel
-from strings import submitter as strings_submitter
-from utils import (
+from src.database.operations import IdempotencyRecord, Submitter, current_month_key
+from src.config.settings import TG_EXPAND_LENGTH, TG_REVIEWER_GROUP, TG_REVIEWONLY
+from src.review.utils import reply_review_message
+from src.strings import channel as strings_channel
+from src.strings import submitter as strings_submitter
+from src.common.utils import (
     check_submission,
     send_result_to_submitter,
     send_submission,

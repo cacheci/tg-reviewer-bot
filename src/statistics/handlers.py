@@ -3,9 +3,9 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 
-from db_op import Reviewer, Submitter, current_month_key
-from env import TG_REVIEWER_GROUP
-from strings import others as strings_others
+from src.database.operations import Reviewer, Submitter, current_month_key
+from src.config.settings import TG_REVIEWER_GROUP
+from src.strings import others as strings_others
 
 import re
 
