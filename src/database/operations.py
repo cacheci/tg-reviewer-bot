@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import (
     DateTime,
+    Integer,
     String,
     create_engine,
     delete,
@@ -525,6 +526,14 @@ class IdempotencyRecord(Base):
         )
 
     @staticmethod
+    def release(operation_key):
+        db.delete(
+            IdempotencyRecord,
+            (IdempotencyRecord.operation_key == operation_key)
+            & (IdempotencyRecord.status == "processing"),
+        )
+
+    @staticmethod
     def claim_review(operation_key, action):
         if IdempotencyRecord.claim(operation_key, "review", action):
             return True
@@ -563,6 +572,20 @@ class IdempotencyRecord(Base):
             status="processing",
             updated_at=datetime.now(),
         )
+
+
+class ImageFingerprint(Base):
+    __tablename__ = "image_fingerprints"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    operation_key: Mapped[str] = mapped_column(String(150), index=True)
+    submitter_id: Mapped[str] = mapped_column(String(50), index=True)
+    media_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    file_unique_id: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
+    image_hash: Mapped[str] = mapped_column(String(16), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
 class DB:
     def __init__(self, database_url):

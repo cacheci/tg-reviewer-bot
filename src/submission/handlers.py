@@ -9,8 +9,18 @@ from telegram.ext import (
 from telegram.helpers import escape_markdown
 
 from src.database.operations import IdempotencyRecord, Submitter, current_month_key
-from src.config.settings import TG_EXPAND_LENGTH, TG_REVIEWER_GROUP, TG_REVIEWONLY
+from src.config.settings import (
+    TG_EXPAND_LENGTH,
+    TG_IMAGE_DUPLICATE_CHECK,
+    TG_REVIEWER_GROUP,
+    TG_REVIEWONLY,
+)
 from src.review.utils import reply_review_message
+from src.submission.image_duplicate import (
+    ImageDuplicateCheckError,
+    check_photo_duplicates,
+    save_photo_fingerprints,
+)
 from src.strings import channel as strings_channel
 from src.strings import submitter as strings_submitter
 from src.common.utils import (
@@ -41,10 +51,17 @@ async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "media_type_list": [],
                 "document_id_list": [],
                 "document_type_list": [],
+                "photo_fingerprint_list": [],
             }
         if message.photo:
             submission["media_id_list"].append(message.photo[-1].file_id)
             submission["media_type_list"].append("photo")
+            submission["photo_fingerprint_list"].append(
+                {
+                    "file_id": message.photo[-1].file_id,
+                    "file_unique_id": message.photo[-1].file_unique_id,
+                }
+            )
         if message.video:
             submission["media_id_list"].append(message.video.file_id)
             submission["media_type_list"].append("video")
@@ -175,12 +192,19 @@ async def confirm_submission(
                 "media_type_list": [],
                 "document_id_list": [],
                 "document_type_list": [],
+                "photo_fingerprint_list": [],
             }
             if origin_message.photo:
                 submission["media_id_list"].append(
                     origin_message.photo[-1].file_id
                 )
                 submission["media_type_list"].append("photo")
+                submission["photo_fingerprint_list"].append(
+                    {
+                        "file_id": origin_message.photo[-1].file_id,
+                        "file_unique_id": origin_message.photo[-1].file_unique_id,
+                    }
+                )
             if origin_message.video:
                 submission["media_id_list"].append(
                     origin_message.video.file_id
@@ -206,6 +230,29 @@ async def confirm_submission(
                     origin_message.document.file_id
                 )
                 submission["document_type_list"].append("document")
+
+        image_fingerprints = []
+        if TG_IMAGE_DUPLICATE_CHECK:
+            try:
+                is_duplicate, image_fingerprints = await check_photo_duplicates(
+                    context,
+                    submission["photo_fingerprint_list"],
+                )
+            except ImageDuplicateCheckError:
+                IdempotencyRecord.release(operation_key)
+                await confirm_message.reply_text(
+                    strings_submitter["duplicate_check_failed"]
+                )
+                return
+
+            if is_duplicate:
+                if origin_message.media_group_id:
+                    media_groups.pop(origin_message.media_group_id, None)
+                await query.edit_message_text(
+                    strings_submitter["duplicate_detected"]
+                )
+                IdempotencyRecord.complete(operation_key)
+                return
 
         submission_messages = await send_submission(
             context=context,
@@ -241,6 +288,8 @@ async def confirm_submission(
         await reply_review_message(
             submission_messages[0], submission_meta, context
         )
+        if TG_IMAGE_DUPLICATE_CHECK and image_fingerprints:
+            save_photo_fingerprints(operation_key, user.id, image_fingerprints)
         await query.delete_message()
         await send_result_to_submitter(
             context,

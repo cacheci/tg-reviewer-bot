@@ -72,6 +72,9 @@ Telegram 投稿/审稿机器人，基于 Telegram Bot API 7.1 以及 python-tele
 | `TG_DEFAULT_MAX_SUBMISSION_PER_HOUR` | 投稿者默认每小时最大投稿数量                                                                                                                 | `20`                                    | 否，默认为 20                                                   |
 | `TG_SELF_APPROVE`             | 是否允许审核给自己的稿件投通过票，True 为允许，False 为禁止                                                                                         | `True` 或 `False`                      | 否，默认为 True                                                |
 | `TG_TIMEOUT_SINGLEREVIEW`     | 超过设定时间后，投稿仅需 1 次审核就能通过或拒绝       | `10080` | 否，默认为 `10080`，若要禁用请设置为较大值 |
+| `TG_IMAGE_DUPLICATE_CHECK`    | 是否启用投稿图片感知哈希查重，仅检查 Telegram photo  | `True` 或 `False` | 否，默认为 False |
+| `TG_IMAGE_DUPLICATE_DAYS`     | 图片查重的历史时间范围（天）                         | `7` | 否，默认为 7 |
+| `TG_IMAGE_DUPLICATE_THRESHOLD` | 图片 pHash 汉明距离阈值，数值越小越严格             | `5` | 否，默认为 5 |
 
 请确保在使用项目前正确设置这些环境变量，以保证程序的正常运行。对于标记为“是”的变量，它们是项目运行所必需的，而对于标记为“否”的变量，则为可选配置，如果未设置，项目将使用默认值或不执行相关功能。
 
