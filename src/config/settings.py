@@ -113,7 +113,7 @@ else:
             TG_TIMEOUT_SINGLEREVIEW     = 200
 
         try:
-            TG_DEFAULT_MAX_SUBMISSION_PER_HOUR = int(os.getenv("TG_DEFAULT_MAX_SUBMISSION_PER_HOUR", 5))
+            TG_DEFAULT_MAX_SUBMISSION_PER_HOUR = int(os.getenv("TG_DEFAULT_MAX_SUBMISSION_PER_HOUR", 20))
         except (TypeError, ValueError):
             TG_DEFAULT_MAX_SUBMISSION_PER_HOUR = 20
 
