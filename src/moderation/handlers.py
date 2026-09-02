@@ -13,7 +13,7 @@ import re
 async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     arg_1, arg_2 = None, None
     if context.args:
-        arg_1, arg_2 = context.args[0], context.args[1:]
+        arg_1, arg_2 = context.args[0], " ".join(context.args[1:])
         if arg_1.startswith(("#USER_","#SUBMITTER_")):
             if arg_1.startswith("#USER_"):
                 arg_1 = arg_1[6:]
