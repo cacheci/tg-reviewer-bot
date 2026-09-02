@@ -1,6 +1,6 @@
 # tg reviewer bot
 
-Telegram 投稿/审稿机器人，基于 Telegram Bot API 7.1 以及 python-telegram-bot v21.0.1, SQLAlchemy 2.0.29, PyMySQL 1.1.0
+Telegram 投稿/审稿机器人，基于 python-telegram-bot 22.8、SQLAlchemy 2.0.29+、PyMySQL 1.1.0+、Pillow 11.2.1+ 和 ImageHash 4.3.2+。
 
 ## 功能使用方法
 
@@ -55,12 +55,13 @@ Telegram 投稿/审稿机器人，基于 Telegram Bot API 7.1 以及 python-tele
 | 环境变量名称                  | 描述                                                                                                                                                | 示例值                                 | 是否必须                                                       |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------- |
 | `TG_TOKEN`                    | Telegram 机器人的 API 令牌                                                                                                                          | `123456789:ABCdefGhIJKlmNopQRSTuvwxYz` | 是                                                             |
-| `TG_REVIEWER_GROUP`           | 审稿群组的 ID，用于发送审稿消息                                                                                                                     | `123456789`                            | 是                                                             |
+| `TG_REVIEWER_GROUP`           | 审稿群组的 ID，用于发送审稿消息                                                                                                                     | `-1001234567890`                       | 是                                                             |
 | `TG_PUBLISH_CHANNEL`          | 发布投稿频道的 ID，用于发布审核通过的投稿，可设置多个，以冒号分隔。若有多个频道，第一个频道作为主频道，用于审核通过后作为跳转按钮中链接的频道       | `123456789` 或 `123456789:987654321`   | 是                                                             |
 | `TG_REJECTED_CHANNEL`         | 被拒绝投稿的频道 ID，用于发送被拒绝的内容                                                                                                           | `123456789`                            | 否，若不存在则不转发被拒稿件                                   |
 | `TG_BOT_USERNAME`             | Telegram 机器人的用户名                                                                                                                             | `my_review_bot`                        | 是                                                             |
 | `TG_CUSTOMAPI`                | Telegram 机器人的 API                                                                                                                               | `http://localhost:999/bot`             |  否，默认为 "https://api.telegram.org/bot" |
-| `TG_DB_URL`                   | 机器人数据库地址                                                                                                                                    | `sqlite:///data/database.db`           | 是 |
+| `TG_DB_URL`                   | 机器人数据库地址                                                                                                                                    | `sqlite:///data/database.db`           | 否 |
+| `TG_REVIEWONLY`               | 是否启用仅审稿模式；启用后暂停接收新投稿                                                                                                             | `True`                      | 否，默认为 False                                                |
 | `TG_RETRACT_NOTIFY`           | 是否通知投稿者稿件被撤回                                                                                                                            | `True` 或 `False`                      | 否，默认为 True                                                |
 | `TG_APPROVE_NUMBER_REQUIRED`  | 通过所需的最小审核人数                                                                                                                              | `2`                                    | 否，默认为 2                                                   |
 | `TG_REJECT_NUMBER_REQUIRED`   | 拒稿所需的最小审核人数                                                                                                                              | `2`                                    | 否，默认为 2                                                   |
