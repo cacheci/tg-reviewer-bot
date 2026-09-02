@@ -321,3 +321,13 @@ def sanitize_userinfo(text: str) -> str:
     if userinfo == "":
         userinfo = strings_others["blank_username"]
     return userinfo
+
+def get_binded_from_string(source: str, bindContent: str) -> tuple[str, bool]:
+    if source.startswith("${") and source.endswith("}"):
+        content_list = source[2:-1].split(",")
+
+        for item in content_list:
+            if item.startswith(bindContent):
+                return item[len(bindContent):], True
+
+    return source, False

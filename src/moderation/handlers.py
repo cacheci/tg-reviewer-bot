@@ -3,59 +3,82 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 
+from src.config.settings import TG_REVIEWER_GROUP
 from src.database.operations import Banned_origin, Banned_user
-from src.common.utils import get_name_from_uid, is_integer, generate_userinfo_str
+from src.common.utils import get_name_from_uid, is_integer, generate_userinfo_str, get_binded_from_string
 from src.strings import others as strings_others
 
 import re
 
 async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        # need at least reason even if user is from reply
-        await update.message.reply_text(
-            strings_others["ban_usage"],
-            parse_mode=ParseMode.MARKDOWN_V2,
-        )
-        return
-    user, result = context.args[0], context.args[1:]
-    if user.startswith(("#USER_","#SUBMITTER_")):
-        if user.startswith("#USER_"):
-            user = user[6:]
-        elif user.startswith("#SUBMITTER_"):
-            user = user[11:]
+    arg_1, arg_2 = None, None
+    if context.args:
+        arg_1, arg_2 = context.args[0], context.args[1:]
+        if arg_1.startswith(("#USER_","#SUBMITTER_")):
+            if arg_1.startswith("#USER_"):
+                arg_1 = arg_1[6:]
+            elif arg_1.startswith("#SUBMITTER_"):
+                arg_1 = arg_1[11:]
 
-    # only reason, no userid. so `user` is just reason
-    if not user.isdigit():
+    if not arg_2:
+        # Try find unprovided id or reason from replied message
         if update.message.reply_to_message:
             replyto_user_id = str(update.message.reply_to_message.from_user.id)
             self_id = str((await context.bot.get_me()).id)
             if replyto_user_id == self_id:
+                # Id not provided, meaning arg is reason if exists.
                 tag_unban_id = re.findall(r"#UNBAN_(\d+)", update.message.reply_to_message.text)
                 tag_submitter_id = re.findall(r"#SUBMITTER_(\d+)", update.message.reply_to_message.text)
                 if tag_unban_id:
-                    result = user
+                    arg_2 = arg_1
                     user = tag_unban_id[0]
                 elif tag_submitter_id:
-                    result = user
+                    arg_2 = arg_1
                     user = tag_submitter_id[0]
                 else:
                     await update.message.reply_text(
-                        strings_others["invalid_id_no_submitter"].format(user_id=escape_markdown(user,version=2,)),
+                        strings_others["ban_usage"],
                         parse_mode=ParseMode.MARKDOWN_V2,
                     )
                     return
+
+                # `arg_2` still null, meaning both arg empty, so the reason should be replied message.
+                if not arg_2:
+                    reason = f"${{bindmsg:{update.message.reply_to_message.id}}}"
+                else:
+                    reason = arg_2
             else:
                 await update.message.reply_text(
-                    strings_others["invalid_id_not_bot"].format(user_id=escape_markdown(user,version=2,)),
-                    parse_mode=ParseMode.MARKDOWN_V2,
+                    strings_others["ban_usage"],
+                        parse_mode=ParseMode.MARKDOWN_V2,
                 )
                 return
-        else:                
+        else:
             await update.message.reply_text(
-                strings_others["invalid_id_bold"].format(user_id=escape_markdown(user,version=2,)),
-                parse_mode=ParseMode.MARKDOWN_V2,
+                strings_others["ban_usage"],
+                    parse_mode=ParseMode.MARKDOWN_V2,
             )
             return
+    else:
+        # `arg_2` exist, meaning both arg provided.
+        user = arg_1
+        reason = arg_2
+
+    if (not user.isdigit()) or (len(user) < 6) or (len(user) > 11):
+        await update.message.reply_text(
+            strings_others["invalid_id_bold"].format(user_id=escape_markdown(user,version=2,)),
+                parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return
+
+    if not reason:
+        await update.message.reply_text(
+            strings_others["provide_ban_reason"],
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return
+
+    # prevent dumplicated ban
     if Banned_user.is_banned(user):
         await update.message.reply_text(
             strings_others["already_banned"].format(target=user)
@@ -65,16 +88,10 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN_V2,
         )
         return
-    if not result:
-        await update.message.reply_text(
-            strings_others["provide_ban_reason"],
-            parse_mode=ParseMode.MARKDOWN_V2,
-        )
-        return
 
     username, fullname = await get_name_from_uid(context, user)
     Banned_user.ban_user(
-        user, username, fullname, update.effective_user.id, " ".join(result)
+        user, username, fullname, update.effective_user.id, reason
     )
     if Banned_user.is_banned(user):
         await update.message.reply_text(
@@ -100,11 +117,20 @@ async def get_banned_user_info(context: ContextTypes.DEFAULT_TYPE, user, mention
         context, user.banned_by
     )
     banned_by_userinfo = generate_userinfo_str(id=int(user.banned_by),username=banned_by_username,fullname=banned_by_fullname,boldfullname=True,mention=mention)
+
+    ban_reason, ban_bind_message = get_binded_from_string(user['banned_reason'], "bindmsg:")
+    if ban_bind_message:
+        ban_reason = strings_others["banned_reason_is_message"].format(
+            url = f"https://t.me/c/{TG_REVIEWER_GROUP[4:]}/{ban_reason}"
+        )
+    else:
+        ban_reason = f"`{escape_markdown(ban_reason, version=2)}`"
+
     users_string = strings_others["banned_info"].format(
         target=banned_userinfo,
         date=escape_markdown(str(user['banned_date']), version=2),
         operator=banned_by_userinfo,
-        reason=escape_markdown(user['banned_reason'], version=2),
+        reason=ban_reason,
     )
     return users_string
 
