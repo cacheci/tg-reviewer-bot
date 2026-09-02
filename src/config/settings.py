@@ -36,6 +36,7 @@ if data_dir is not None:
             TG_CUSTOMAPI                = data.get('non_required', {}).get('TG_CUSTOMAPI', "https://api.telegram.org/bot")
             TG_DB_URL                   = data.get('non_required', {}).get('TG_DB_URL', "sqlite://")
             TG_REVIEWONLY               = data.get('non_required', {}).get('TG_REVIEWONLY', False)
+            TG_SUPERADMIN               = [int(x) for x in data.get('non_required', {}).get('TG_SUPERADMIN', [])]
 
             TG_REJECTED_CHANNEL         = data.get('non_required', {}).get('TG_REJECTED_CHANNEL', None)
 
@@ -82,6 +83,9 @@ else:
             raise ValueError("Environment variable 'TG_PUBLISH_CHANNEL' not found!")
 
         # non-required settings
+        # list
+        TG_SUPERADMIN                   = [int(x.strip()) for x in os.getenv("TG_SUPERADMIN", "").split(":") if x.strip()]
+
         # bool
         TG_TEXT_SPOILER                 = os.getenv("TG_TEXT_SPOILER", "True")      == "True"
         TG_SELF_APPROVE                 = os.getenv("TG_SELF_APPROVE", "True")      == "True"
