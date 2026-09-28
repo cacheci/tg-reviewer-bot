@@ -1,12 +1,14 @@
 from datetime import datetime, timedelta
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Integer,
     String,
     create_engine,
     delete,
     func,
+    inspect,
     select,
     update,
 )
@@ -280,13 +282,19 @@ class Banned_user(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     banned_by: Mapped[id]
+    is_spam: Mapped[bool] = mapped_column(Boolean, default=False)
 
     def __repr__(self):
         return f"Banned_user({self.user_fullname} ({f'@{self.user_name}, ' if self.user_name else ''}{self.user_id}), Banned Date: {self.banned_date}, Banned By: {self.banned_by}), Reason: {self.banned_reason})"
 
     @staticmethod
     def ban_user(
-        user_id, user_name, user_fullname, banned_by, banned_reason=None
+        user_id,
+        user_name,
+        user_fullname,
+        banned_by,
+        banned_reason=None,
+        is_spam=False,
     ):
         try:
             db.insert(
@@ -296,6 +304,7 @@ class Banned_user(Base):
                 user_fullname=user_fullname,
                 banned_by=banned_by,
                 banned_reason=banned_reason,
+                is_spam=is_spam,
             )
         except IntegrityError as e:
             print(f"IntegrityError: {e}")
@@ -319,6 +328,48 @@ class Banned_user(Base):
             return db.select(Banned_user, Banned_user.user_id == user_id)[0]
         except IndexError:
             print(f"IndexError: Banned User {user_id} not found")
+            return None
+
+
+class Muted_user(Base):
+    __tablename__ = "muted_users"
+    user_id: Mapped[id_pk]
+    muted_reason: Mapped[str] = mapped_column(String(50), nullable=True)
+    muted_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    muted_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    muted_by: Mapped[id]
+
+    @staticmethod
+    def mute_user(user_id, muted_by, muted_until, muted_reason=None):
+        if Muted_user.get_muted_user(user_id):
+            db.update(
+                Muted_user,
+                Muted_user.user_id == user_id,
+                muted_by=muted_by,
+                muted_reason=muted_reason,
+                muted_date=datetime.now(),
+                muted_until=muted_until,
+            )
+            return
+        db.insert(
+            Muted_user,
+            user_id=user_id,
+            muted_by=muted_by,
+            muted_reason=muted_reason,
+            muted_until=muted_until,
+        )
+
+    @staticmethod
+    def unmute_user(user_id):
+        db.delete(Muted_user, Muted_user.user_id == user_id)
+
+    @staticmethod
+    def get_muted_user(user_id):
+        try:
+            return db.select(Muted_user, Muted_user.user_id == user_id)[0]
+        except IndexError:
             return None
 
 
@@ -592,6 +643,18 @@ class DB:
         self.engine = create_engine(database_url, pool_pre_ping=True)
         self.Session = sessionmaker(bind=self.engine)
         Base.metadata.create_all(self.engine)
+        self._migrate_banned_users()
+
+    def _migrate_banned_users(self):
+        columns = {
+            column["name"] for column in inspect(self.engine).get_columns("banned_users")
+        }
+        if "is_spam" not in columns:
+            with self.engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "ALTER TABLE banned_users "
+                    "ADD COLUMN is_spam BOOLEAN NOT NULL DEFAULT FALSE"
+                )
 
     def select(self, table, condition_expr=True):
         with self.Session.begin() as session:

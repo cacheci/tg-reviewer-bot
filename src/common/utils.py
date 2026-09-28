@@ -1,4 +1,5 @@
 import collections, re
+from datetime import datetime, timezone
 
 from telegram import (
     InputMediaDocument,
@@ -10,9 +11,9 @@ from telegram import (
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from telegram.ext.filters import MessageFilter
-from src.database.operations import Banned_origin, Banned_user, Submitter
+from src.database.operations import Banned_origin, Banned_user, Muted_user, Submitter
 from telegram.helpers import escape_markdown
-from src.config.settings import TG_BANNED_NOTIFY, TG_TEXT_SPOILER, TG_REVIEWER_GROUP
+from src.config.settings import TG_TEXT_SPOILER, TG_REVIEWER_GROUP
 from src.strings import others as strings_others
 from src.strings import submitter as strings_submitter
 
@@ -254,9 +255,25 @@ def generate_userinfo_str(
 
 async def check_submission(update):
     if Banned_user.is_banned(update.effective_user.id):
-        if TG_BANNED_NOTIFY:
-            await update.message.reply_text(strings_submitter["banned"])
+        banned_user = Banned_user.get_banned_user(update.effective_user.id)
+        if not banned_user["is_spam"]:
+            await update.effective_message.reply_text(strings_submitter["banned"])
         return False
+    muted_user = Muted_user.get_muted_user(update.effective_user.id)
+    if muted_user:
+        muted_until = muted_user["muted_until"]
+        if isinstance(muted_until, str):
+            muted_until = datetime.fromisoformat(muted_until)
+        if muted_until.tzinfo is None:
+            muted_until = muted_until.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) < muted_until:
+            await update.effective_message.reply_text(
+                strings_submitter["muted"].format(
+                    until=datetime.fromtimestamp(muted_until.timestamp()).strftime("%Y-%m-%d %H:%M:%S")
+                )
+            )
+            return False
+        Muted_user.unmute_user(update.effective_user.id)
     forward_from = update._effective_message.forward_origin
     if forward_from is not None:
         if forward_from.type == forward_from.USER:

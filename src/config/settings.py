@@ -55,7 +55,6 @@ if data_dir is not None:
             REJECTION_REASON            = REJECTION_REASON_JSON if isinstance(REJECTION_REASON_JSON, list) else [strings_others["default_reason"]]
 
             TG_RETRACT_NOTIFY           = data.get('non_required', {}).get('TG_RETRACT_NOTIFY', True)
-            TG_BANNED_NOTIFY            = data.get('non_required', {}).get('TG_BANNED_NOTIFY', True)
             TG_IMAGE_DUPLICATE_CHECK    = data.get('non_required', {}).get('TG_IMAGE_DUPLICATE_CHECK', False)
             TG_IMAGE_DUPLICATE_DAYS     = int(str(data.get('non_required', {}).get('TG_IMAGE_DUPLICATE_DAYS', 7)))
             TG_IMAGE_DUPLICATE_THRESHOLD = int(str(data.get('non_required', {}).get('TG_IMAGE_DUPLICATE_THRESHOLD', 5)))
@@ -90,7 +89,6 @@ else:
         TG_TEXT_SPOILER                 = os.getenv("TG_TEXT_SPOILER", "True")      == "True"
         TG_SELF_APPROVE                 = os.getenv("TG_SELF_APPROVE", "True")      == "True"
         TG_RETRACT_NOTIFY               = os.getenv("TG_RETRACT_NOTIFY", "True")    == "True"
-        TG_BANNED_NOTIFY                = os.getenv("TG_BANNED_NOTIFY", "True")     == "True"
         TG_REJECT_REASON_USER_LIMIT     = os.getenv("TG_REJECT_REASON_USER_LIMIT", "True") == "True"
         TG_REVIEWONLY                   = os.getenv("TG_REVIEWONLY", "False")       == "True"
         TG_IMAGE_DUPLICATE_CHECK        = os.getenv("TG_IMAGE_DUPLICATE_CHECK", "False") == "True"

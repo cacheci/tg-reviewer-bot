@@ -24,7 +24,10 @@ logging.basicConfig(
 
 from src.moderation.handlers import (
     ban_origin,
-    ban_user,
+    ban_handler,
+    mute_handler,
+    spam_handler,
+    unmute_handler,
     list_banned_origins,
     list_banned_users,
     unban_origin,
@@ -153,7 +156,25 @@ if __name__ == "__main__":
             ),
             CommandHandler(
                 "ban",
-                ban_user,
+                ban_handler,
+                filters=~filters.UpdateType.EDITED_MESSAGE
+                & filters.Chat(chat_id=int(TG_REVIEWER_GROUP)),
+            ),
+            CommandHandler(
+                "spam",
+                spam_handler,
+                filters=~filters.UpdateType.EDITED_MESSAGE
+                & filters.Chat(chat_id=int(TG_REVIEWER_GROUP)),
+            ),
+            CommandHandler(
+                "mute",
+                mute_handler,
+                filters=~filters.UpdateType.EDITED_MESSAGE
+                & filters.Chat(chat_id=int(TG_REVIEWER_GROUP)),
+            ),
+            CommandHandler(
+                "unmute",
+                unmute_handler,
                 filters=~filters.UpdateType.EDITED_MESSAGE
                 & filters.Chat(chat_id=int(TG_REVIEWER_GROUP)),
             ),

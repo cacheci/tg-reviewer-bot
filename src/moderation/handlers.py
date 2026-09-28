@@ -1,16 +1,20 @@
 from telegram import Update
 from telegram.constants import ParseMode
+from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 
 from src.config.settings import TG_REVIEWER_GROUP
-from src.database.operations import Banned_origin, Banned_user
+from src.database.operations import Banned_origin, Banned_user, Muted_user
 from src.common.utils import get_name_from_uid, is_integer, generate_userinfo_str, get_binded_from_string
 from src.strings import others as strings_others
+from src.strings import submitter as strings_submitter
 
+from datetime import datetime, timedelta, timezone
 import re
 
-async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE, is_spam: bool):
+    usage = strings_others["spam_usage" if is_spam else "ban_usage"]
     arg_1, arg_2 = None, None
     if context.args:
         arg_1, arg_2 = context.args[0], " ".join(context.args[1:])
@@ -37,7 +41,7 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     user = tag_submitter_id[0]
                 else:
                     await update.message.reply_text(
-                        strings_others["ban_usage"],
+                        usage,
                         parse_mode=ParseMode.MARKDOWN_V2,
                     )
                     return
@@ -49,13 +53,13 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reason = arg_2
             else:
                 await update.message.reply_text(
-                    strings_others["ban_usage"],
+                    usage,
                         parse_mode=ParseMode.MARKDOWN_V2,
                 )
                 return
         else:
             await update.message.reply_text(
-                strings_others["ban_usage"],
+                usage,
                     parse_mode=ParseMode.MARKDOWN_V2,
             )
             return
@@ -91,7 +95,12 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     username, fullname = await get_name_from_uid(context, user)
     Banned_user.ban_user(
-        user, username, fullname, update.effective_user.id, reason
+        user,
+        username,
+        fullname,
+        update.effective_user.id,
+        reason,
+        is_spam=is_spam,
     )
     if Banned_user.is_banned(user):
         await update.message.reply_text(
@@ -322,3 +331,175 @@ async def list_banned_origins(
         origins_string,
         parse_mode=ParseMode.MARKDOWN_V2,
     )
+
+
+async def mute_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    args = context.args or []
+    replied_message = update.message.reply_to_message
+    explicit_user = len(args) >= 3
+
+    if explicit_user:
+        user = args[0]
+        duration_text = args[1]
+        reason = " ".join(args[2:])
+        if user.startswith("#USER_"):
+            user = user[6:]
+        elif user.startswith("#SUBMITTER_"):
+            user = user[11:]
+    else:
+        if not replied_message or not replied_message.from_user:
+            await update.message.reply_text(strings_others["mute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        if replied_message.from_user.id != (await context.bot.get_me()).id:
+            await update.message.reply_text(strings_others["mute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        replied_text = replied_message.text or replied_message.caption or ""
+        tagged_user = re.search(r"#UNBAN_(\d+)|#SUBMITTER_(\d+)", replied_text)
+        if not tagged_user:
+            await update.message.reply_text(strings_others["mute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        user = tagged_user.group(1) or tagged_user.group(2)
+        duration_text = args[0] if args else "7d"
+        reason = " ".join(args[1:]) or f"${{bindmsg:{replied_message.id}}}"
+
+    if not user.isdigit() or not 6 <= len(user) <= 11 or not reason:
+        await update.message.reply_text(strings_others["mute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+        return
+
+    try:
+        if duration_text.isdigit():
+            days, hours = 0, int(duration_text)
+            duration_text += "h"
+        else:
+            duration_match = re.fullmatch(r"(?:(\d+)d)?(?:(\d+)h)?", duration_text)
+            if not duration_match or not any(duration_match.groups()):
+                await update.message.reply_text(strings_others["mute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+                return
+            days = int(duration_match.group(1) or 0)
+            hours = int(duration_match.group(2) or 0)
+        duration = timedelta(days=days, hours=hours)
+        muted_until = datetime.now(timezone.utc) + duration
+    except (OverflowError, ValueError):
+        await update.message.reply_text(strings_others["mute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+        return
+    if duration.total_seconds() <= 0:
+        await update.message.reply_text(strings_others["mute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+        return
+
+    Muted_user.mute_user(
+        user,
+        update.effective_user.id,
+        muted_until,
+        reason,
+    )
+    local_until = datetime.fromtimestamp(muted_until.timestamp()).strftime("%Y-%m-%d %H:%M:%S")
+    notify_failed = False
+    try:
+        await context.bot.send_message(
+            chat_id=int(user),
+            text=strings_submitter["muted"].format(until=local_until),
+        )
+    except TelegramError:
+        notify_failed = True
+
+    user_name, user_fullname = await get_name_from_uid(context, user)
+    operator_name, operator_fullname = await get_name_from_uid(
+        context, update.effective_user.id
+    )
+    target_info = generate_userinfo_str(
+        id=int(user), username=user_name, fullname=user_fullname, boldfullname=True
+    )
+    operator_info = generate_userinfo_str(
+        id=update.effective_user.id,
+        username=operator_name,
+        fullname=operator_fullname,
+        boldfullname=True,
+    )
+    bound_message_id, is_bound_message = get_binded_from_string(reason, "bindmsg:")
+    display_reason = (
+        strings_others["banned_reason_is_message"].format(
+            url=f"https://t.me/c/{TG_REVIEWER_GROUP[4:]}/{bound_message_id}"
+        )
+        if is_bound_message and bound_message_id.isdigit()
+        else f"`{escape_markdown(reason, version=2)}`"
+    )
+    group_message = strings_others["mute_success"].format(
+        target=target_info,
+        date=escape_markdown(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), version=2),
+        operator=operator_info,
+        reason=display_reason,
+        duration=escape_markdown(duration_text, version=2),
+        until=escape_markdown(local_until, version=2),
+        target_id=user,
+        operator_id=update.effective_user.id,
+    )
+    if notify_failed:
+        group_message += "\n" + escape_markdown(strings_others["mute_notify_failed"], version=2)
+    await update.message.reply_text(
+        group_message,
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+
+
+async def unmute_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    args = context.args or []
+    if len(args) == 1:
+        user = args[0]
+        for prefix in ("#MUTE_", "#SUBMITTER_", "#USER_"):
+            if user.startswith(prefix):
+                user = user[len(prefix):]
+                break
+    elif not args:
+        replied_message = update.message.reply_to_message
+        if not replied_message or not replied_message.from_user:
+            await update.message.reply_text(strings_others["unmute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        if replied_message.from_user.id != (await context.bot.get_me()).id:
+            await update.message.reply_text(strings_others["unmute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        replied_text = replied_message.text or replied_message.caption or ""
+        tagged_user = re.search(r"#MUTE_(\d+)|#SUBMITTER_(\d+)", replied_text)
+        if not tagged_user:
+            await update.message.reply_text(strings_others["unmute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+            return
+        user = tagged_user.group(1) or tagged_user.group(2)
+    else:
+        await update.message.reply_text(strings_others["unmute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+        return
+
+    if not user.isdigit():
+        await update.message.reply_text(strings_others["unmute_usage"], parse_mode=ParseMode.MARKDOWN_V2)
+        return
+    if not Muted_user.get_muted_user(user):
+        await update.message.reply_text(
+            strings_others["not_muted"].format(target=user)
+        )
+        return
+
+    Muted_user.unmute_user(user)
+    if Muted_user.get_muted_user(user):
+        await update.message.reply_text(
+            strings_others["unmute_failed"].format(target=user)
+        )
+        return
+    await update.message.reply_text(
+        strings_others["unmute_success"].format(
+            target=user,
+            operator=update.effective_user.id,
+        )
+    )
+
+
+async def ban_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    await ban_user(update, context, False)
+
+async def spam_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    await ban_user(update, context, True)
