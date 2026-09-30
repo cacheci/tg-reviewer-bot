@@ -1,8 +1,14 @@
 import base64
 import binascii
+import io
 import logging
 import pickle
 import re
+import secrets
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import MessageOriginType, ParseMode
@@ -800,7 +806,7 @@ def generate_submission_meta_string(submission_meta, longago_status=0):
             tags += f" #USER_{reviewer_id} #REVIEWER_{reviewer_id}"
     tags += f" {status_tag}"
 
-    submission_meta_text = f"[\u200b](http://t.me/{base64.urlsafe_b64encode(pickle.dumps(submission_meta)).decode()})"
+    submission_meta_text = generate_submission_meta_url(submission_meta)
     visible_content = (
         status_title
         + "\n\n"
@@ -817,3 +823,106 @@ def generate_submission_meta_string(submission_meta, longago_status=0):
 
     # use Zero-width non-joiner and fake url(or the bot api will delete invalid link) to hide the submission_meta
     return f"{visible_content}{submission_meta_text}"
+
+
+_META_ENCRYPTION_PREFIX = "enc1_"
+_META_ENCRYPTION_CONTEXT = b"tg-reviewer-bot:submission-meta:enc1"
+
+
+def _submission_meta_key(encrypt_salt, salt):
+    # encrypt_salt is a secret password; salt is a separate random public value.
+    if isinstance(encrypt_salt, str):
+        password = encrypt_salt.encode("utf-8")
+    elif isinstance(encrypt_salt, bytes):
+        password = encrypt_salt
+    else:
+        raise TypeError("encrypt_salt must be a secret string or bytes")
+    if len(password) < 32:
+        raise ValueError("encrypt_salt must contain at least 32 bytes; use a random secret")
+    return Scrypt(salt=salt, length=32, n=2**17, r=8, p=1).derive(password)
+
+
+def generate_submission_meta_url(meta, full=True, encrypt_salt=None):
+    """Return a hidden Markdown link containing metadata.
+
+    Public metadata contains only the original submitter and reviewer fields.
+    For encryption, encrypt_salt must be a securely stored random secret of
+    at least 32 bytes. None keeps unencrypted format. 
+    """
+    if not isinstance(meta, dict):
+        raise TypeError("meta must be a dictionary")
+    payload = pickle.dumps(
+        meta if full else {
+            "submitter": meta["submitter"],
+            "reviewer": meta["reviewer"],
+        }
+    )
+    if encrypt_salt is None:
+        token = base64.urlsafe_b64encode(payload).decode("ascii")
+    else:
+        salt = secrets.token_bytes(16)
+        nonce = secrets.token_bytes(12)
+        key = _submission_meta_key(encrypt_salt, salt)
+        ciphertext = AESGCM(key).encrypt(nonce, payload, _META_ENCRYPTION_CONTEXT)
+        token = _META_ENCRYPTION_PREFIX + base64.urlsafe_b64encode(
+            salt + nonce + ciphertext
+        ).decode("ascii")
+    return f"[\u200b](http://t.me/{token})"
+
+
+class _SubmissionMetadataUnpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        # Metadata uses built-in data only; never import or execute pickle globals.
+        raise pickle.UnpicklingError("Objects and functions are not allowed in metadata")
+
+
+def decrypt_submission_meta_url(meta_url, encrypt_salt=None):
+    """Decode a generated Markdown link, t.me URL, or token into a metadata dict.
+
+    Encrypted links require the original secret and are authenticated before
+    deserialization. Legacy unencrypted links remain readable without a secret;
+    providing a secret requires an encrypted link to prevent plaintext downgrade.
+    Invalid data, an incorrect secret, or tampering raises ValueError; encrypted
+    data never falls back to the unencrypted decoder. Existing review handlers
+    still use their legacy decoder and are not switched to encrypted links here.
+    """
+    if not isinstance(meta_url, str):
+        raise TypeError("meta_url must be a string")
+    token = meta_url
+    if token.startswith("[\u200b](") and token.endswith(")"):
+        token = token[len("[\u200b]("):-1]
+    for prefix in ("http://t.me/", "https://t.me/"):
+        if token.startswith(prefix):
+            token = token[len(prefix):]
+            break
+    encrypted = token.startswith(_META_ENCRYPTION_PREFIX)
+    if encrypt_salt is not None and not encrypted:
+        raise ValueError("Expected encrypted submission metadata")
+    encoded = token[len(_META_ENCRYPTION_PREFIX):] if encrypted else token
+    if not re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", encoded):
+        raise ValueError("Invalid submission metadata token")
+    try:
+        payload = base64.b64decode(encoded, altchars=b"-_", validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Invalid submission metadata encoding") from exc
+
+    if encrypted:
+        if encrypt_salt is None:
+            raise ValueError("A secret is required to decrypt submission metadata")
+        if len(payload) < 16 + 12 + 16:
+            raise ValueError("Encrypted submission metadata is truncated")
+        salt, nonce, ciphertext = payload[:16], payload[16:28], payload[28:]
+        key = _submission_meta_key(encrypt_salt, salt)
+        try:
+            payload = AESGCM(key).decrypt(nonce, ciphertext, _META_ENCRYPTION_CONTEXT)
+        except InvalidTag as exc:
+            raise ValueError("Incorrect secret or tampered submission metadata") from exc
+
+    stream = io.BytesIO(payload)
+    try:
+        meta = _SubmissionMetadataUnpickler(stream).load()
+    except (pickle.UnpicklingError, EOFError, ValueError, TypeError, OverflowError) as exc:
+        raise ValueError("Invalid submission metadata payload") from exc
+    if not isinstance(meta, dict) or stream.read(1):
+        raise ValueError("Submission metadata must contain exactly one dictionary")
+    return meta
