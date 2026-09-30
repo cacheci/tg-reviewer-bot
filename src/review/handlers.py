@@ -21,6 +21,7 @@ from src.review.utils import (
     generate_submission_meta_string,
     get_decision,
     remove_decision,
+    save_submission_metadata,
     send_to_rejected_channel,
 )
 from src.common.utils import send_result_to_submitter, send_submission
@@ -95,6 +96,7 @@ async def approve_submission(
     # increse reviewer approve count
     reviewer_month = current_month_key()
     reviewer_months[reviewer_id] = reviewer_month
+    save_submission_metadata(review_message, submission_meta, "pending")
     Reviewer.count_increase(
         reviewer_id, "approve_count", month=reviewer_month
     )
@@ -130,6 +132,7 @@ async def approve_submission(
     # increse submitter approved count
     result_month = current_month_key()
     stats_month["result"] = result_month
+    save_submission_metadata(review_message, submission_meta, "approved")
     Submitter.count_increase(
         submission_meta["submitter"][0],
         "approved_count",
@@ -149,6 +152,7 @@ async def approve_submission(
     # then send this submission to the publish channel
     main_channel_messages = None
     submission_meta["sent_msg"] = {}
+    save_submission_metadata(review_message, submission_meta, "approved")
     for publish_channel in TG_PUBLISH_CHANNEL:
         # if the submission is nsfw
         skip_all = None
@@ -190,6 +194,12 @@ async def approve_submission(
         )
         if main_channel_messages is None:
             main_channel_messages = sent_messages
+        # Persist published message IDs before further Telegram requests.
+        sent_message_ids = [message.message_id for message in sent_messages]
+        if skip_all is not None:
+            sent_message_ids.append(skip_all.message_id)
+        submission_meta["sent_msg"][publish_channel] = sent_message_ids
+        save_submission_metadata(review_message, submission_meta, "approved")
         # edit the skip_all message
         if skip_all:
             url_parts = sent_messages[-1].link.rsplit("/", 1)
@@ -200,12 +210,8 @@ async def approve_submission(
             await skip_all.edit_text(
                 text=strings_channel["nsfw_warning"], reply_markup=inline_keyboard
             )
-        # add inline keyboard to jump to this submission and its comments in the publish channel
-        sent_message_ids = [message.message_id for message in sent_messages]
-        if skip_all is not None:
-            sent_message_ids.append(skip_all.message_id)
-        submission_meta["sent_msg"][publish_channel] = sent_message_ids
 
+    # add inline keyboard to jump to this submission and its comments in the publish channel
     inline_keyboard = InlineKeyboardMarkup(
         [
             [
@@ -336,6 +342,7 @@ async def reject_submission(
         # increse submitter rejected count
         result_month = current_month_key()
         stats_month["result"] = result_month
+        save_submission_metadata(review_message, submission_meta, "rejected")
         Submitter.count_increase(
             submission_meta["submitter"][0],
             "rejected_count",
@@ -368,6 +375,7 @@ async def reject_submission(
     ]
     reviewer_month = current_month_key()
     reviewer_months[reviewer_id] = reviewer_month
+    save_submission_metadata(review_message, submission_meta, "pending")
     # increse reviewer reject count
     Reviewer.count_increase(
         reviewer_id, "reject_count", month=reviewer_month
@@ -403,6 +411,7 @@ async def reject_submission(
     # increse submitter rejected count
     result_month = current_month_key()
     stats_month["result"] = result_month
+    save_submission_metadata(review_message, submission_meta, "rejected")
     Submitter.count_increase(
         submission_meta["submitter"][0],
         "rejected_count",
@@ -509,6 +518,7 @@ async def withdraw_decision(
 
     submission_meta, removed = remove_decision(submission_meta, reviewer_id)
     if removed:
+        save_submission_metadata(review_message, submission_meta, "pending")
         await review_message.edit_text(
             text=generate_submission_meta_string(submission_meta),
             parse_mode=ParseMode.MARKDOWN_V2,

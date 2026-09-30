@@ -4,6 +4,8 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Integer,
+    Index,
+    JSON,
     String,
     create_engine,
     delete,
@@ -16,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from typing_extensions import Annotated
 
-from src.config.settings import TG_DB_URL, TG_DEFAULT_MAX_SUBMISSION_PER_HOUR
+from src.config.settings import TG_DB_URL, TG_DEFAULT_MAX_SUBMISSION_PER_HOUR, TG_REVIEWER_GROUP
 
 
 def current_month_key():
@@ -623,6 +625,43 @@ class IdempotencyRecord(Base):
             status="processing",
             updated_at=datetime.now(),
         )
+
+
+class Submission(Base):
+    __tablename__ = f"submissions_{int(TG_REVIEWER_GROUP)}"
+    __table_args__ = (
+        Index(f"ix_{__tablename__}_submitter_approved", "submitter_id", "approved"),
+    )
+
+    review_message_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    submitter_id: Mapped[str] = mapped_column(String(50), index=True)
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True, index=True)
+    metadata_payload: Mapped[dict] = mapped_column("metadata", JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    @staticmethod
+    def save(review_message_id, submission_meta, status):
+        # Assign the complete payload each time so nested metadata changes persist.
+        values = {
+            "submitter_id": str(submission_meta["submitter"][0]),
+            "status": status,
+            "approved": None if status == "pending" else status == "approved",
+            "metadata_payload": submission_meta,
+            "updated_at": datetime.now(),
+        }
+        with db.Session.begin() as session:
+            record = session.get(Submission, review_message_id)
+            if record is None:
+                session.add(Submission(review_message_id=review_message_id, **values))
+            else:
+                for column, value in values.items():
+                    setattr(record, column, value)
 
 
 class ImageFingerprint(Base):

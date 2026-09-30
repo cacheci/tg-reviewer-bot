@@ -1,5 +1,6 @@
 import base64
 import binascii
+import logging
 import pickle
 import re
 
@@ -8,8 +9,9 @@ from telegram.constants import MessageOriginType, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
+from sqlalchemy.exc import SQLAlchemyError
 
-from src.database.operations import Banned_user, Reviewer, Submitter, current_month_key
+from src.database.operations import Banned_user, Reviewer, Submission, Submitter, current_month_key
 from src.config.settings import (
     APPROVE_NUMBER_REQUIRED,
     REJECT_NUMBER_REQUIRED,
@@ -64,6 +66,23 @@ class SubmissionStatus:
     APPROVED = 1
     REJECTED = 2
     REJECTED_NO_REASON = 3
+
+
+logger = logging.getLogger(__name__)
+
+
+def save_submission_metadata(review_message, submission_meta, status):
+    try:
+        Submission.save(
+            review_message.message_id, submission_meta, status
+        )
+    except (SQLAlchemyError, ValueError):
+        # Keep existing Telegram review behavior available if persistence fails.
+        logger.exception(
+            "Failed to save submission metadata for review message %s in chat %s",
+            review_message.message_id,
+            review_message.chat_id,
+        )
 
 
 async def reply_review_message(
@@ -122,11 +141,12 @@ async def reply_review_message(
     )
 
     try:
-        await first_submission_message.reply_text(
+        review_message = await first_submission_message.reply_text(
             generate_submission_meta_string(submission_meta),
             parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=inline_keyboard,
         )
+        save_submission_metadata(review_message, submission_meta, "pending")
     except BadRequest as br:
         if br.message.startswith("Entities_too_long"):
             submitter_id, submitter_username, submitter_fullname, _ = (
@@ -210,6 +230,8 @@ async def send_to_rejected_channel(
     review_message = update.effective_message
     if is_custom:
         review_message = review_message.reply_to_message
+
+    save_submission_metadata(review_message, submission_meta, "rejected")
 
     # get all append messages from submission_meta['append']
     append_messages = []
@@ -303,6 +325,7 @@ async def append_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     submission_meta["append"][reviewer_fullname].append(
         strings_reviewer["note_prefix"].format(message=append_message)
     )
+    save_submission_metadata(review_message, submission_meta, "pending")
     await update.message.reply_text(strings_reviewer["note_added"])
     await review_message.edit_text(
         text=generate_submission_meta_string(submission_meta),
@@ -346,6 +369,7 @@ async def remove_append_message(
     submission_meta["append"][reviewer_fullname].pop(append_message_num - 1)
     if not submission_meta["append"][reviewer_fullname]:
         del submission_meta["append"][reviewer_fullname]
+    save_submission_metadata(review_message, submission_meta, "pending")
     await update.message.reply_text(strings_reviewer["note_removed"])
     await review_message.edit_text(
         text=generate_submission_meta_string(submission_meta),
@@ -578,6 +602,7 @@ async def retract_approved_submission(
             )
         await query.answer(strings_reviewer["withdrawn"])
         submission_meta["reviewer"][query.from_user.id][2] = strings_reviewer["retracted_status"]
+        save_submission_metadata(review_message, submission_meta, "retracted")
         inline_keyboard = None
         await review_message.edit_text(
             text=generate_submission_meta_string(submission_meta),
