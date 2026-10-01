@@ -22,6 +22,7 @@ from src.config.settings import (
     APPROVE_NUMBER_REQUIRED,
     REJECT_NUMBER_REQUIRED,
     REJECTION_REASON,
+    TG_METADATA_ENCRYPTION_SECRET,
     TG_PUBLISH_CHANNEL,
     TG_REJECT_REASON_USER_LIMIT,
     TG_REJECTED_CHANNEL,
@@ -445,9 +446,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        tracking_meta = pickle.loads(
-            base64.urlsafe_b64decode(tracking_tokens[-1])
-        )
+        tracking_meta = decrypt_submission_meta_url(tracking_tokens[-1], encrypt_salt=TG_METADATA_ENCRYPTION_SECRET)
         review_message_id = int(tracking_meta["review_message_id"])
     except (
         binascii.Error,
@@ -455,6 +454,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ValueError,
         KeyError,
         TypeError,
+        OverflowError,
         pickle.UnpicklingError,
     ):
         await update.message.reply_text(strings_reviewer["track_invalid"])

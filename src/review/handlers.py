@@ -11,6 +11,7 @@ from src.config.settings import (
     APPROVE_NUMBER_REQUIRED,
     REJECT_NUMBER_REQUIRED,
     REJECTION_REASON,
+    TG_METADATA_ENCRYPTION_SECRET,
     TG_PUBLISH_CHANNEL,
     TG_SELF_APPROVE,
     TG_TIMEOUT_SINGLEREVIEW,
@@ -19,6 +20,7 @@ from src.review.utils import (
     ReviewChoice,
     SubmissionStatus,
     generate_submission_meta_string,
+    generate_submission_meta_url,
     get_decision,
     remove_decision,
     save_submission_metadata,
@@ -82,6 +84,10 @@ async def approve_submission(
             IdempotencyRecord.complete(operation_key)
         await query_decision(update, context)
         return
+    approve_count = sum(
+        reviewer[2] in (ReviewChoice.SFW, ReviewChoice.NSFW)
+        for reviewer in submission_meta["reviewer"].values()
+    )
     if not IdempotencyRecord.claim_review(operation_key, str(action)):
         await query.answer(strings_reviewer["review_processed"], show_alert=True)
         return
@@ -172,16 +178,25 @@ async def approve_submission(
         for append_list in submission_meta["append"].values():
             append_messages.extend(append_list)
         append_messages_string = "\n".join(append_messages)
-        tracking_meta = base64.urlsafe_b64encode(
-            pickle.dumps({"review_message_id": review_message.message_id})
-        ).decode()
+        if "video" in submission_meta["media_type_list"]:
+            tracking_meta = {
+                **submission_meta,
+                "review_message_id": review_message.message_id,
+            }
+        else:
+            tracking_meta = {
+                "review_message_id": review_message.message_id,
+            }
+        tracking_link = generate_submission_meta_url(
+            tracking_meta, encrypt_salt=TG_METADATA_ENCRYPTION_SECRET
+        )
         publish_text = submission_meta["text"]
         if append_messages_string:
             publish_text += "\n" + append_messages_string
         if publish_text.endswith("||"):
-            publish_text += f"\n[\u200b](http://t.me/{tracking_meta})"
+            publish_text += "\n" + tracking_link
         else:
-            publish_text += f"[\u200b](http://t.me/{tracking_meta})"
+            publish_text += tracking_link
         sent_messages = await send_submission(
             context=context,
             chat_id=publish_channel,

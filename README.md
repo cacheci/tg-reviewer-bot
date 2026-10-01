@@ -27,6 +27,7 @@ Telegram 投稿/审稿机器人，基于 python-telegram-bot 22.8、SQLAlchemy 2
 9. 支持过审后由原通过的审核员撤稿，撤稿后是否通知投稿人可通过环境变量 `TG_RETRACT_NOTIFY` 设置。
 10. 支持拒绝投稿人给自己投通过票，可通过环境变量 `TG_SELF_APPROVE` 设置。
 11. 支持同步投稿至多个频道，可通过环境变量 `TG_PUBLISH_CHANNEL` 设置，其中第一个频道作为主频道，用于审核通过后作为跳转按钮中链接的频道。
+12. 含视频的投稿，将会携带加密的追踪数据，用于在视频压缩并发布后正确获取发送到频道的消息ID。需配置密钥 `TG_METADATA_ENCRYPTION_SECRET`。
 
 ### 用户屏蔽
 
@@ -70,6 +71,7 @@ Telegram 投稿/审稿机器人，基于 python-telegram-bot 22.8、SQLAlchemy 2
 | `TG_SUPERADMIN`               | 超级管理员用户 ID 列表，使用环境变量时以冒号分隔                                                                                                    | `123456789:987654321`                  | 否，默认为空列表                                               |
 | `TG_CUSTOMAPI`                | Telegram 机器人的 API                                                                                                                               | `http://localhost:999/bot`             |  否，默认为 "https://api.telegram.org/bot" |
 | `TG_DB_URL`                   | 机器人数据库地址                                                                                                                                    | `sqlite:///data/database.db`           | 否 |
+| `TG_METADATA_ENCRYPTION_SECRET` | 频道视频投稿完整元数据的独立随机加密密钥，UTF-8 编码至少 32 字节；JSON 配置使用 `non_required` 中的同名字段 | 独立生成并持久保存的随机密钥 | 发布含 Telegram `video` 的投稿及解密追踪时必须 |
 | `TG_REVIEWONLY`               | 是否启用仅审稿模式；启用后暂停接收新投稿                                                                                                             | `True`                      | 否，默认为 False                                                |
 | `TG_RETRACT_NOTIFY`           | 是否通知投稿者稿件被撤回                                                                                                                            | `True` 或 `False`                      | 否，默认为 True                                                |
 | `TG_APPROVE_NUMBER_REQUIRED`  | 通过所需的最小审核人数                                                                                                                              | `2`                                    | 否，默认为 2                                                   |

@@ -32,6 +32,8 @@ if data_dir is not None:
             TG_PUBLISH_CHANNEL_JSON     = data['required']['TG_PUBLISH_CHANNEL']
             TG_PUBLISH_CHANNEL          = [int(x) for x in TG_PUBLISH_CHANNEL_JSON]
 
+            TG_METADATA_ENCRYPTION_SECRET = data['required']['TG_METADATA_ENCRYPTION_SECRET']
+
             # non-required settings
             TG_CUSTOMAPI                = data.get('non_required', {}).get('TG_CUSTOMAPI', "https://api.telegram.org/bot")
             TG_DB_URL                   = data.get('non_required', {}).get('TG_DB_URL', "sqlite://")
@@ -133,6 +135,7 @@ else:
         TG_REJECTED_CHANNEL             = os.environ.get("TG_REJECTED_CHANNEL")
         REJECTION_REASON                = os.environ.get("TG_REJECTION_REASON", ":".join(strings_others["default_rejection_reasons"])).split(":")
         TG_DB_URL                       = os.environ.get("TG_DB_URL", "sqlite:///data/database.db")
+        TG_METADATA_ENCRYPTION_SECRET   = os.environ.get("TG_METADATA_ENCRYPTION_SECRET")
         TG_CUSTOMAPI                    = os.environ.get("TG_CUSTOMAPI", "https://api.telegram.org/bot")
     except KeyError as e:
         logger.exception("Env config error")
