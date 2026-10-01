@@ -43,6 +43,7 @@ def finalize_operation_key(review_message):
     return f"review-finalize:{review_message.chat_id}:{review_message.message_id}"
 
 
+@IdempotencyRecord.cleanup_on_error
 async def approve_submission(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -76,12 +77,12 @@ async def approve_submission(
     operation_key = review_operation_key(review_message, reviewer_id)
     if reviewer_id in submission_meta["reviewer"]:
         if not IdempotencyRecord.get(operation_key):
-            IdempotencyRecord.claim(
+            if IdempotencyRecord.claim(
                 operation_key,
                 "review",
                 str(submission_meta["reviewer"][reviewer_id][2]),
-            )
-            IdempotencyRecord.complete(operation_key)
+            ):
+                IdempotencyRecord.complete(operation_key)
         await query_decision(update, context)
         return
     approve_count = sum(
@@ -282,6 +283,7 @@ async def approve_submission(
     IdempotencyRecord.complete(finalization_key)
 
 
+@IdempotencyRecord.cleanup_on_error
 async def reject_submission(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -308,12 +310,12 @@ async def reject_submission(
     operation_key = review_operation_key(review_message, reviewer_id)
     if reviewer_id in submission_meta["reviewer"]:
         if not IdempotencyRecord.get(operation_key):
-            IdempotencyRecord.claim(
+            if IdempotencyRecord.claim(
                 operation_key,
                 "review",
                 str(submission_meta["reviewer"][reviewer_id][2]),
-            )
-            IdempotencyRecord.complete(operation_key)
+            ):
+                IdempotencyRecord.complete(operation_key)
         await query_decision(update, context)
         return
     if not IdempotencyRecord.claim_review(operation_key, str(action)):
@@ -501,6 +503,7 @@ async def query_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer(get_decision(submission_meta, reviewer_id))
 
 
+@IdempotencyRecord.cleanup_on_error
 async def withdraw_decision(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -521,12 +524,12 @@ async def withdraw_decision(
     if reviewer_id in submission_meta["reviewer"] and not IdempotencyRecord.get(
         operation_key
     ):
-        IdempotencyRecord.claim(
+        if IdempotencyRecord.claim(
             operation_key,
             "review",
             str(submission_meta["reviewer"][reviewer_id][2]),
-        )
-        IdempotencyRecord.complete(operation_key)
+        ):
+            IdempotencyRecord.complete(operation_key)
     if not IdempotencyRecord.claim_withdraw(operation_key):
         await query.answer(strings_reviewer["withdraw_unavailable"], show_alert=True)
         return

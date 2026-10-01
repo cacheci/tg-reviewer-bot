@@ -1,3 +1,5 @@
+import logging
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import MessageOriginType
 from telegram.ext import (
@@ -29,6 +31,7 @@ from src.common.utils import (
     send_submission,
 )
 
+logger = logging.getLogger(__name__)
 media_groups = {}
 async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_submission(update) == False:
@@ -97,6 +100,7 @@ async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@IdempotencyRecord.cleanup_on_error
 async def confirm_submission(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -239,11 +243,13 @@ async def confirm_submission(
                     submission["photo_fingerprint_list"],
                 )
             except ImageDuplicateCheckError:
-                IdempotencyRecord.release(operation_key)
-                await confirm_message.reply_text(
-                    strings_submitter["duplicate_check_failed"]
-                )
-                return
+                try:
+                    await confirm_message.reply_text(
+                        strings_submitter["duplicate_check_failed"]
+                    )
+                except BaseException:
+                    logger.exception("Failed to notify submitter of duplicate check error")
+                raise
 
             if is_duplicate:
                 if origin_message.media_group_id:

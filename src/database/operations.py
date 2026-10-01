@@ -1,4 +1,7 @@
+from contextvars import ContextVar
 from datetime import datetime, timedelta
+from functools import wraps
+import logging
 
 from sqlalchemy import (
     Boolean,
@@ -17,8 +20,10 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from typing_extensions import Annotated
+from telegram import ReplyParameters
 
 from src.config.settings import TG_DB_URL, TG_DEFAULT_MAX_SUBMISSION_PER_HOUR, TG_REVIEWER_GROUP
+from src.strings import reviewer as strings_reviewer
 
 
 def current_month_key():
@@ -532,6 +537,11 @@ class ReviewerMonthlyStats(Base):
             return None
 
 
+logger = logging.getLogger(__name__)
+_idempotency_claims = ContextVar("idempotency_claims", default=None)
+_idempotency_timeouts = ContextVar("idempotency_timeouts", default=None)
+
+
 class IdempotencyRecord(Base):
     __tablename__ = "idempotency_records"
     operation_key: Mapped[str] = mapped_column(String(150), primary_key=True)
@@ -546,45 +556,213 @@ class IdempotencyRecord(Base):
     )
 
     @staticmethod
-    def claim(operation_key, operation_type, action):
+    def cleanup_on_error(handler):
+        @wraps(handler)
+        async def guarded(*args, **kwargs):
+            update = args[0] if args else kwargs.get("update")
+            context = args[1] if len(args) > 1 else kwargs.get("context")
+            trigger_message = update.effective_message if update is not None else None
+            if (
+                trigger_message is not None
+                and trigger_message.chat.type == "private"
+                and trigger_message.reply_to_message is not None
+            ):
+                # The confirmation message may be deleted before the error occurs.
+                trigger_message = trigger_message.reply_to_message
+            claims = {}
+            timeouts = set()
+            scope_token = _idempotency_claims.set(claims)
+            timeout_token = _idempotency_timeouts.set(timeouts)
+            try:
+                return await handler(*args, **kwargs)
+            except BaseException as error:
+                released = False
+                for operation_key, owner in reversed(list(claims.items())):
+                    try:
+                        with db.Session.begin() as session:
+                            result = session.execute(
+                                delete(IdempotencyRecord).where(
+                                    IdempotencyRecord._owner_condition(operation_key, owner)
+                                )
+                            )
+                            deleted = result.rowcount > 0
+                        released |= deleted
+                    except BaseException:
+                        logger.exception(
+                            "Failed to release idempotency record %s after an error",
+                            operation_key,
+                        )
+                if released:
+                    await IdempotencyRecord._notify_exception(
+                        context, trigger_message, type(error).__name__
+                    )
+                raise
+            finally:
+                try:
+                    if timeouts:
+                        await IdempotencyRecord._notify_exception(
+                            context, trigger_message, None
+                        )
+                finally:
+                    _idempotency_timeouts.reset(timeout_token)
+                    _idempotency_claims.reset(scope_token)
+
+        return guarded
+
+    @staticmethod
+    async def _notify_exception(context, trigger_message, exception_type):
         try:
-            db.insert(
-                IdempotencyRecord,
-                operation_key=operation_key,
-                operation_type=operation_type,
-                action=action,
-                status="processing",
+            if exception_type is None:
+                exception_type = strings_reviewer["operation_timeout_exception_type"]
+            text = strings_reviewer["operation_exception"].format(
+                exception_type=exception_type
             )
+            reviewer_group_id = int(TG_REVIEWER_GROUP)
+            reply_parameters = None
+            if trigger_message is not None and trigger_message.chat_id == reviewer_group_id:
+                reply_parameters = ReplyParameters(
+                    trigger_message.message_id, allow_sending_without_reply=True
+                )
+                if trigger_message.link:
+                    text += "\n" + trigger_message.link
+            notice = await context.bot.send_message(
+                chat_id=reviewer_group_id,
+                text=text,
+                parse_mode=None,
+                reply_parameters=reply_parameters,
+            )
+            if trigger_message is not None and trigger_message.chat_id != reviewer_group_id:
+                await context.bot.copy_message(
+                    chat_id=reviewer_group_id,
+                    from_chat_id=trigger_message.chat_id,
+                    message_id=trigger_message.message_id,
+                    reply_parameters=ReplyParameters(
+                        notice.message_id, allow_sending_without_reply=True
+                    ),
+                )
+        except BaseException:
+            # Notification failures must not replace the original business error.
+            logger.exception("Failed to notify reviewer group of an operation exception")
+
+    @staticmethod
+    def _remember_timeout(operation_key):
+        timeouts = _idempotency_timeouts.get()
+        if timeouts is not None:
+            timeouts.add(operation_key)
+
+    @staticmethod
+    def _owner_condition(operation_key, owner):
+        created_at, action = owner
+        return (
+            (IdempotencyRecord.operation_key == operation_key)
+            & (IdempotencyRecord.created_at == created_at)
+            & (IdempotencyRecord.action == action)
+        )
+
+    @staticmethod
+    def _remember_claim(record):
+        claims = _idempotency_claims.get()
+        if claims is not None:
+            claims[record.operation_key] = (record.created_at, record.action)
+
+    @staticmethod
+    def _delete_expired(session, operation_key, now):
+        result = session.execute(
+            delete(IdempotencyRecord).where(
+                (IdempotencyRecord.operation_key == operation_key)
+                & (IdempotencyRecord.status == "processing")
+                & (IdempotencyRecord.updated_at <= now - timedelta(seconds=60))
+            )
+        )
+        return result.rowcount > 0
+
+    @staticmethod
+    def claim(operation_key, operation_type, action):
+        now = datetime.now()
+        try:
+            with db.Session.begin() as session:
+                expired = IdempotencyRecord._delete_expired(session, operation_key, now)
+                record = IdempotencyRecord(
+                    operation_key=operation_key,
+                    operation_type=operation_type,
+                    action=action,
+                    status="processing",
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(record)
+                session.flush()
+                session.refresh(record)
+                IdempotencyRecord._remember_claim(record)
+            if expired:
+                IdempotencyRecord._remember_timeout(operation_key)
             return True
         except IntegrityError:
             return False
 
     @staticmethod
     def get(operation_key):
-        try:
-            return db.select(
-                IdempotencyRecord,
-                IdempotencyRecord.operation_key == operation_key,
-            )[0]
-        except IndexError:
-            return None
+        with db.Session.begin() as session:
+            expired = IdempotencyRecord._delete_expired(session, operation_key, datetime.now())
+            record = session.execute(
+                select("*").select_from(IdempotencyRecord).where(
+                    IdempotencyRecord.operation_key == operation_key
+                )
+            ).mappings().first()
+        if expired:
+            IdempotencyRecord._remember_timeout(operation_key)
+        return record
 
     @staticmethod
     def complete(operation_key):
+        condition = IdempotencyRecord.operation_key == operation_key
+        claims = _idempotency_claims.get()
+        if claims is not None:
+            owner = claims.get(operation_key)
+            if owner is None:
+                return
+            condition = IdempotencyRecord._owner_condition(operation_key, owner)
         db.update(
             IdempotencyRecord,
-            IdempotencyRecord.operation_key == operation_key,
+            condition & (IdempotencyRecord.status == "processing"),
             status="completed",
             updated_at=datetime.now(),
         )
 
     @staticmethod
     def release(operation_key):
+        condition = IdempotencyRecord.operation_key == operation_key
+        claims = _idempotency_claims.get()
+        if claims is not None:
+            owner = claims.get(operation_key)
+            if owner is None:
+                return
+            condition = IdempotencyRecord._owner_condition(operation_key, owner)
         db.delete(
             IdempotencyRecord,
-            (IdempotencyRecord.operation_key == operation_key)
-            & (IdempotencyRecord.status == "processing"),
+            condition & (IdempotencyRecord.status == "processing"),
         )
+        if claims is not None:
+            claims.pop(operation_key, None)
+
+    @staticmethod
+    def _claim_existing(operation_key, condition, action):
+        now = datetime.now()
+        with db.Session.begin() as session:
+            result = session.execute(
+                update(IdempotencyRecord).where(condition).values(
+                    action=action,
+                    status="processing",
+                    # A renewed claim is a new marker, with its own creation time.
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            if result.rowcount != 1:
+                return False
+            record = session.get(IdempotencyRecord, operation_key)
+            IdempotencyRecord._remember_claim(record)
+        return True
 
     @staticmethod
     def claim_review(operation_key, action):
@@ -597,14 +775,12 @@ class IdempotencyRecord(Base):
             or record.status != "completed"
         ):
             return False
-        return db.update_if(
-            IdempotencyRecord,
+        return IdempotencyRecord._claim_existing(
+            operation_key,
             (IdempotencyRecord.operation_key == operation_key)
             & (IdempotencyRecord.action == "withdraw")
             & (IdempotencyRecord.status == "completed"),
-            action=action,
-            status="processing",
-            updated_at=datetime.now(),
+            action,
         )
 
     @staticmethod
@@ -616,14 +792,12 @@ class IdempotencyRecord(Base):
             or record.action == "withdraw"
         ):
             return False
-        return db.update_if(
-            IdempotencyRecord,
+        return IdempotencyRecord._claim_existing(
+            operation_key,
             (IdempotencyRecord.operation_key == operation_key)
             & (IdempotencyRecord.status == "completed")
             & (IdempotencyRecord.action != "withdraw"),
-            action="withdraw",
-            status="processing",
-            updated_at=datetime.now(),
+            "withdraw",
         )
 
 

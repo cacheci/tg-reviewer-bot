@@ -12,6 +12,8 @@
     "reply_submitter": "💬 回复投稿人",
     "cannot_self_approve": "❌ 你不能给自己投通过票",
     "submission_finalizing": "此条投稿正在处理或已经处理完成",
+    "operation_exception": "⚠️ 发生异常：{exception_type}",
+    "operation_timeout_exception_type": "⚠️ 发生异常：探测到处理超时",
     "review_processed": "该审核操作正在处理或已经完成",
     "vote_success": "✅ 投票成功！{decision}",
     "approved_success": "✅ 投票成功，此条投稿已通过",
