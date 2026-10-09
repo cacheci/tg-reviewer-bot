@@ -65,7 +65,9 @@
     "title_rejected": "❌ 已拒绝稿件",
     "current_status": "当前状态：{status}",
     "retracted_status": "通过后撤回",
-    "rejected_title_marker": "已拒绝稿件"
+    "rejected_title_marker": "已拒绝稿件",
+    "force_continue": "强制重新发布（开发中）",
+    "excuting": "正在执行操作..."
   },
   "submitter": {
     "bot_paused": "本 Bot 已暂停使用。请查看频道获取更多信息",

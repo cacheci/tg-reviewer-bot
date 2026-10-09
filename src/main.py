@@ -39,6 +39,7 @@ from src.review.handlers import (
     query_decision,
     reject_submission,
     withdraw_decision,
+    force_continue_callback,
 )
 from src.review.utils import (
     ReviewChoice,
@@ -106,6 +107,10 @@ if __name__ == "__main__":
                 pattern=f"^{ReviewChoice.APPROVED_RETRACT}",
             ),
             CallbackQueryHandler(reject_reason, pattern=f"^REASON"),
+            CallbackQueryHandler(
+                force_continue_callback,
+                pattern=f"^f_conti",
+            ),
             MessageHandler(
                 filters.REPLY
                 & filters.Chat(chat_id=int(TG_REVIEWER_GROUP))
