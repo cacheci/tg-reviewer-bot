@@ -53,9 +53,9 @@ Telegram 投稿/审稿机器人，基于 python-telegram-bot 22.8、SQLAlchemy 2
 
 ### 更新
 
-1. `TG_SUPERADMIN` 中的用户可以私聊机器人 `/update`，程序将会通过 git 拉取最新版本的代码并自动重启。
+1. `TG_SUPERADMIN` 中的用户可以私聊机器人 `/update`，程序会显示当前所在分支并通过 git 拉取最新版本的代码。没有新提交时不会重启；有新提交时会显示更新前后的 commit 及其间的提交内容，然后自动重启。
 2. 请确保部署时正确配置了 git 仓库。请谨慎使用远程仓库，使用他人的仓库克隆/拉取可能引入不可控的功能。
-3. 参数说明：`[-b branch|--branch branch]` 用于指定 git 分支，未指定分支时使用当前分支；`[-r remote-uri|--remote remote-uri]` 用于指定远端仓库地址，未指定远端时使用该分支配置的远端或回退到 `origin`；`--force` 会强制使用最新代码并抛弃本地的修改。
+3. 参数说明：`[-b branch|--branch branch]` 用于指定 git 分支，未指定分支时使用当前分支；`[-r remote-uri|--remote remote-uri]` 用于指定远端仓库地址，未指定远端时使用该分支配置的远端或回退到 `origin`；`[-c commit|--commit commit]` 用于指定该分支中的 commit ID；`--force` 会强制使用指定版本并抛弃本地修改，也允许回退或跳转到指定 commit。
 
 ## 环境变量
 
