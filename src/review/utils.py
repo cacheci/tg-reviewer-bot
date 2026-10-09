@@ -837,18 +837,10 @@ def _submission_meta_key(encrypt_salt, salt):
         password = encrypt_salt
     else:
         raise TypeError("encrypt_salt must be a secret string or bytes")
-    if len(password) < 32:
-        raise ValueError("encrypt_salt must contain at least 32 bytes; use a random secret")
     return Scrypt(salt=salt, length=32, n=2**17, r=8, p=1).derive(password)
 
 
 def generate_submission_meta_url(meta, full=True, encrypt_salt=None):
-    """Return a hidden Markdown link containing metadata.
-
-    Public metadata contains only the original submitter and reviewer fields.
-    For encryption, encrypt_salt must be a securely stored random secret of
-    at least 32 bytes. None keeps unencrypted format. 
-    """
     if not isinstance(meta, dict):
         raise TypeError("meta must be a dictionary")
     payload = pickle.dumps(
