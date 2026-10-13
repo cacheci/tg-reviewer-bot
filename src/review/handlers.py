@@ -27,6 +27,7 @@ from src.review.utils import (
     decrypt_submission_meta_url,
     get_decision,
     remove_decision,
+    save_submission_metadata,
     save_submission_metadata_with_id,
     send_to_rejected_channel,
 )
@@ -1008,6 +1009,3 @@ channel_trace_handler = MessageHandler(
     filters.Chat(chat_id=publish_channel_comment_intlist),
     channel_trace_to_continue,
 )
-
-def save_submission_metadata(review_message, submission_meta, status):
-    save_submission_metadata_with_id(review_message.message_id, submission_meta, status)

@@ -33,7 +33,6 @@ from src.common.utils import send_result_to_submitter, send_submission, sanitize
 from src.strings import channel as strings_channel
 from src.strings import reviewer as strings_reviewer
 from src.strings import submitter as strings_submitter
-from src.review.handlers import save_submission_metadata
 
 """
 submission_meta = {
@@ -91,6 +90,8 @@ def save_submission_metadata_with_id(review_message_id, submission_meta, status)
             review_message_id,
         )
 
+def save_submission_metadata(review_message, submission_meta, status):
+    save_submission_metadata_with_id(review_message.message_id, submission_meta, status)
 
 async def reply_review_message(
     first_submission_message, submission_meta, context
