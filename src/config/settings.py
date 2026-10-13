@@ -41,6 +41,7 @@ if data_dir is not None:
             TG_SUPERADMIN               = [int(x) for x in data.get('non_required', {}).get('TG_SUPERADMIN', [])]
 
             TG_REJECTED_CHANNEL         = data.get('non_required', {}).get('TG_REJECTED_CHANNEL', None)
+            TG_PUBLISH_CHANNEL_COMMENTAREA = data.get('non_required', {}).get('TG_PUBLISH_CHANNEL_COMMENTAREA', None)
 
             APPROVE_NUMBER_REQUIRED     = int(str(data.get('non_required', {}).get('APPROVE_NUMBER_REQUIRED', 2)))
             REJECT_NUMBER_REQUIRED      = int(str(data.get('non_required', {}).get('REJECT_NUMBER_REQUIRED', 2)))
@@ -132,6 +133,11 @@ else:
             TG_IMAGE_DUPLICATE_THRESHOLD = 5
 
         # string
+        TG_PUBLISH_CHANNEL_COMMENTAREA = [
+            channel_id
+            for channel_id in os.getenv("TG_PUBLISH_CHANNEL_COMMENTAREA", "").split(":")
+            if channel_id
+        ]
         TG_REJECTED_CHANNEL             = os.environ.get("TG_REJECTED_CHANNEL")
         REJECTION_REASON                = os.environ.get("TG_REJECTION_REASON", ":".join(strings_others["default_rejection_reasons"])).split(":")
         TG_DB_URL                       = os.environ.get("TG_DB_URL", "sqlite:///data/database.db")

@@ -1,10 +1,11 @@
 import base64
 import pickle
+import re
 from datetime import datetime, timedelta, timezone
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, MessageHandler, filters
 
 from src.database.operations import IdempotencyRecord, Reviewer, Submitter, current_month_key
 from src.config.settings import (
@@ -15,15 +16,18 @@ from src.config.settings import (
     TG_PUBLISH_CHANNEL,
     TG_SELF_APPROVE,
     TG_TIMEOUT_SINGLEREVIEW,
+    TG_REVIEWER_GROUP,
+    TG_PUBLISH_CHANNEL_COMMENTAREA,
 )
 from src.review.utils import (
     ReviewChoice,
     SubmissionStatus,
     generate_submission_meta_string,
     generate_submission_meta_url,
+    decrypt_submission_meta_url,
     get_decision,
     remove_decision,
-    save_submission_metadata,
+    save_submission_metadata_with_id,
     send_to_rejected_channel,
 )
 from src.common.utils import send_result_to_submitter, send_submission
@@ -162,6 +166,8 @@ async def approve_submission(
     save_submission_metadata(review_message, submission_meta, "approved")
     submission_meta["pending_send_channels"] = TG_PUBLISH_CHANNEL
 
+    has_video = False
+
     pending_send_channels = submission_meta["pending_send_channels"].copy()
     for index, publish_channel in enumerate(pending_send_channels):
         # if the submission is nsfw
@@ -184,12 +190,15 @@ async def approve_submission(
             append_messages.extend(append_list)
         append_messages_string = "\n".join(append_messages)
 
+        submission_meta["media_count"] = len(submission_meta["media_type_list"])
+
         # Generate tracking link with encrypted metadata
         if "video" in submission_meta["media_type_list"]:
             tracking_meta = {
                 **submission_meta,
                 "review_message_id": review_message.message_id,
             }
+            has_video = True
         else:
             tracking_meta = {
                 "review_message_id": review_message.message_id,
@@ -222,10 +231,10 @@ async def approve_submission(
             main_channel_messages = [message.message_id for message in sent_messages]
 
         trigger_coding = (sent_messages[-1].id == 0)
-        if (trigger_coding == False):
-            submission_meta["pending_send_channels"] = pending_send_channels[(index + 1):]
+        submission_meta["pending_send_channels"] = pending_send_channels[(index + 1):]
 
         # Persist published message IDs before further Telegram requests.
+        # If id = 0, it's meaningless infomation. Skip it.
         if (trigger_coding == False):
             sent_message_ids = [message.message_id for message in sent_messages]
             if skip_all is not None:
@@ -249,12 +258,16 @@ async def approve_submission(
                 await skip_all.delete()
 
         # Stop if trigger video coding
-        if trigger_coding:
+        # Track is effective only if configured comment area,
+        # so there must be a better way to skip. Now we use
+        # `trigger_coding`, not `has_video` because we configure
+        # comment area only for channels that will trigger coding.
+        if (trigger_coding):
             break
 
     primary_channel = str(TG_PUBLISH_CHANNEL[0])[4:] if str(TG_PUBLISH_CHANNEL[0]).startswith("-100") else TG_PUBLISH_CHANNEL[0]
     # add inline keyboard to jump to this submission and its comments in the publish channel
-    if not submission_meta["pending_send_channels"]:
+    if (not submission_meta["pending_send_channels"]) and (not trigger_coding):
         inline_keyboard = InlineKeyboardMarkup(
             [
                 [
@@ -296,7 +309,7 @@ async def approve_submission(
                         switch_inline_query_current_chat="/comment ",
                     ),
                     InlineKeyboardButton(
-                        strings_reviewer["force_continue"], callback_data=f"f_conti" # TODO
+                        strings_reviewer["force_continue"], callback_data=f"f_conti"
                     )
                 ]
             ]
@@ -306,7 +319,7 @@ async def approve_submission(
             [
                 [
                     InlineKeyboardButton(
-                        strings_reviewer["force_continue"], callback_data=f"f_conti" # TODO
+                        strings_reviewer["force_continue"], callback_data=f"f_conti"
                     )
                 ]
             ]
@@ -557,24 +570,19 @@ async def force_continue_callback(update, context):
             review_message.text_markdown_v2_urled.split("/")[-1][:-1]
         )
     )
-    reviewer_id = query.from_user.id
 
     query = update.callback_query
-    query.answer(strings_reviewer["excuting"])
+    await query.answer(strings_reviewer["excuting"])
+    reviewer_id = query.from_user.id
 
-    operation_key = review_operation_key(review_message, reviewer_id)
-    finalization_key = finalize_operation_key(review_message)
+    operation_key = f"review-force-continue:{review_message.chat_id}:{review_message.message_id}"
 
-
-    if not IdempotencyRecord.get(operation_key):
-        if IdempotencyRecord.claim(
-            operation_key,
-            "review",
-            str(submission_meta["reviewer"][reviewer_id][2]),
-        ):
-            IdempotencyRecord.complete(operation_key)
-    else:
-        await query_decision(update, context)
+    if not IdempotencyRecord.claim(
+        operation_key,
+        "review_force_continue",
+        str(reviewer_id),
+    ):
+        await query.answer(strings_reviewer["excuting"], show_alert=True)
         return
 
     # get options from all reviewers
@@ -646,8 +654,7 @@ async def force_continue_callback(update, context):
             should_send_to_submitter = True
 
         trigger_coding = (sent_messages[-1].id == 0)
-        if (trigger_coding == False):
-            submission_meta["pending_send_channels"] = pending_send_channels[(index + 1):]
+        submission_meta["pending_send_channels"] = pending_send_channels[(index + 1):]
 
         # Persist published message IDs before further Telegram requests.
         if (trigger_coding == False):
@@ -721,7 +728,7 @@ async def force_continue_callback(update, context):
                         switch_inline_query_current_chat="/comment ",
                     ),
                     InlineKeyboardButton(
-                        strings_reviewer["force_continue"], callback_data=f"f_conti" # TODO
+                        strings_reviewer["force_continue"], callback_data=f"f_conti"
                     )
                 ]
             ]
@@ -731,7 +738,7 @@ async def force_continue_callback(update, context):
             [
                 [
                     InlineKeyboardButton(
-                        strings_reviewer["force_continue"], callback_data=f"f_conti" # TODO
+                        strings_reviewer["force_continue"], callback_data=f"f_conti"
                     )
                 ]
             ]
@@ -768,7 +775,6 @@ async def force_continue_callback(update, context):
             ),
         )
     IdempotencyRecord.complete(operation_key)
-    IdempotencyRecord.complete(finalization_key)
 
 async def query_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -828,3 +834,180 @@ async def withdraw_decision(
     else:
         IdempotencyRecord.complete(operation_key)
         await query.answer(strings_reviewer["no_vote"])
+
+async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    if (message.from_user is not None):
+        # ID 777000 is offical telegram service, meaning it's
+        # forwarded form channel automaticly as comment area.
+        if ((message.from_user.id != 777000)):
+            return
+    
+    message_text = (
+        message.text_markdown_v2_urled
+        or message.caption_markdown_v2_urled
+        or ""
+    )
+
+    ####    ============= WARNING =============    ####
+    # Forward video message form bot channel release  #
+    # to channel is EXTREMELY DANGEROUS, and we can't #
+    # avoid it in bot. Do not do that.                #
+    ####    ============= WARNING =============    ####
+
+    tracking_tokens = re.findall(
+        r"https?://t\.me/([A-Za-z0-9_-]+={0,2})",
+        message_text,
+    )
+    if not tracking_tokens:
+        return
+
+    try:
+        tracking_meta = decrypt_submission_meta_url(
+            tracking_tokens[-1],
+            encrypt_salt=TG_METADATA_ENCRYPTION_SECRET,
+        )
+    except (TypeError, ValueError) as exc:
+        return
+
+    # If tracking_meta have `pending_send_channels`, it means
+    # it's in a video and should take action.
+    if tracking_meta.get("pending_send_channels"):
+        current_channel = tracking_meta["pending_send_channels"][0]
+        tracking_meta["pending_send_channels"] = tracking_meta["pending_send_channels"][1:]
+
+        if not tracking_meta.get("sent_msg"):
+            is_primary = True
+        else:
+            is_primary = False
+
+        # Message from 777000 have only source that, is auto forward.
+        sent_message_ids = [
+            message.forward_origin.message_id + offset for offset in range(tracking_meta["media_count"])
+        ]
+        tracking_meta["sent_msg"][current_channel] = sent_message_ids
+
+        if is_primary:
+            await send_result_to_submitter(
+                context = context,
+                submitter_id = tracking_meta["submitter"][0],
+                submit_message_id = tracking_meta["submitter"][3],
+                message = strings_submitter["approved"],
+                inline_keyboard_markup = InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                strings_channel["view"], url=f"https://t.me/c/{current_channel}/{sent_message_ids[0]}"
+                            ),
+                            InlineKeyboardButton(
+                                strings_channel["view_comments"],
+                                url=f"https://t.me/c/{current_channel}/{sent_message_ids[0]}?comment=1",
+                            ),
+                        ]
+                    ]
+                ),
+            )
+
+        if tracking_meta["pending_send_channels"]:
+            print(sent_message_ids)
+
+            # get options from all reviewers
+            review_options = [
+                reviewer[2] for reviewer in tracking_meta["reviewer"].values()
+            ]
+
+            pending_send_channels = tracking_meta["pending_send_channels"]
+            for index, channel_to_send in enumerate(pending_send_channels):
+                # if the submission is nsfw
+                skip_all = None
+                has_spoiler = False
+                if ReviewChoice.NSFW in review_options:
+                    has_spoiler = True
+                    inline_keyboard = InlineKeyboardMarkup(
+                        [[InlineKeyboardButton(strings_channel["next"], url=f"https://t.me/")]]
+                    )
+                    skip_all = await context.bot.send_message(
+                        chat_id=channel_to_send,
+                        text=strings_channel["nsfw_warning"],
+                        reply_markup=inline_keyboard,
+                    )
+                
+                # get all append messages from tracking_meta['append']
+                append_messages = []
+                for append_list in tracking_meta["append"].values():
+                    append_messages.extend(append_list)
+                append_messages_string = "\n".join(append_messages)
+
+                # Generate tracking link with encrypted metadata
+                tracking_link = generate_submission_meta_url(
+                    tracking_meta, encrypt_salt=TG_METADATA_ENCRYPTION_SECRET
+                )
+
+                # Generate text
+                publish_text = tracking_meta["text"]
+                if append_messages_string:
+                    publish_text += "\n" + append_messages_string
+                if publish_text.endswith("||"):
+                    publish_text += "\n" + tracking_link
+                else:
+                    publish_text += tracking_link
+
+                # Send to target
+                sent_messages = await send_submission(
+                    context=context,
+                    chat_id=channel_to_send,
+                    media_id_list=tracking_meta["media_id_list"],
+                    media_type_list=tracking_meta["media_type_list"],
+                    documents_id_list=tracking_meta["documents_id_list"],
+                    document_type_list=tracking_meta["document_type_list"],
+                    text=publish_text,
+                    has_spoiler=has_spoiler,
+                )
+
+                trigger_coding = (sent_messages[-1].id == 0)
+
+                if (trigger_coding == False):
+                    sent_message_ids = [message.message_id for message in sent_messages]
+                    if skip_all is not None:
+                        sent_message_ids.append(skip_all.message_id)
+                    tracking_meta["sent_msg"][channel_to_send] = sent_message_ids
+
+                tracking_meta["pending_send_channels"] = pending_send_channels[(index + 1):]
+                
+                # edit the skip_all message
+                if skip_all:
+                    if (trigger_coding == False):
+                        url_parts = sent_messages[-1].link.rsplit("/", 1)
+                        next_url = url_parts[0] + "/" + str(int(url_parts[-1]) + 1)
+                        inline_keyboard = InlineKeyboardMarkup(
+                            [[InlineKeyboardButton(strings_channel["next"], url=next_url)]]
+                        )
+                        await skip_all.edit_text(
+                            text=strings_channel["nsfw_warning"], reply_markup=inline_keyboard
+                        )
+                    else:
+                        await skip_all.delete()
+
+                if (trigger_coding):
+                    break
+
+        await context.bot.edit_message_text(
+            chat_id=TG_REVIEWER_GROUP,
+            message_id=tracking_meta["review_message_id"],
+            text = generate_submission_meta_string(tracking_meta,longago_status=SubmissionStatus.APPROVED)
+        )
+        save_submission_metadata_with_id(tracking_meta["review_message_id"], tracking_meta, "approved")
+    else:
+        return
+
+publish_channel_comment_intlist = [
+    int(channel_id) for channel_id in TG_PUBLISH_CHANNEL_COMMENTAREA
+] if TG_PUBLISH_CHANNEL_COMMENTAREA is not None else []
+
+channel_trace_handler = MessageHandler(
+    filters.Chat(chat_id=publish_channel_comment_intlist),
+    channel_trace_to_continue,
+)
+
+def save_submission_metadata(review_message, submission_meta, status):
+    save_submission_metadata_with_id(review_message.message_id, submission_meta, status)

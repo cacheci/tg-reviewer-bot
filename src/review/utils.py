@@ -78,17 +78,16 @@ class SubmissionStatus:
 logger = logging.getLogger(__name__)
 
 
-def save_submission_metadata(review_message, submission_meta, status):
+def save_submission_metadata_with_id(review_message_id, submission_meta, status):
     try:
         Submission.save(
-            review_message.message_id, submission_meta, status
+            review_message_id, submission_meta, status
         )
     except (SQLAlchemyError, ValueError):
         # Keep existing Telegram review behavior available if persistence fails.
         logger.exception(
-            "Failed to save submission metadata for review message %s in chat %s",
-            review_message.message_id,
-            review_message.chat_id,
+            "Failed to save submission metadata for review message %s",
+            review_message_id,
         )
 
 

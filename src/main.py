@@ -33,13 +33,14 @@ from src.moderation.handlers import (
     unban_origin,
     unban_user,
 )
-from src.config.settings import TG_BOT_USERNAME, TG_REVIEWER_GROUP, TG_TOKEN, TG_CUSTOMAPI
+from src.config.settings import TG_BOT_USERNAME, TG_REVIEWER_GROUP, TG_TOKEN, TG_CUSTOMAPI, TG_PUBLISH_CHANNEL
 from src.review.handlers import (
     approve_submission,
     query_decision,
     reject_submission,
     withdraw_decision,
     force_continue_callback,
+    channel_trace_handler,
 )
 from src.review.utils import (
     ReviewChoice,
@@ -86,6 +87,7 @@ if __name__ == "__main__":
 
     application.add_handler(confirm_submit_handler)
     application.add_handler(submission_handler)
+    application.add_handler(channel_trace_handler)
     application.add_handlers(
         [
             CallbackQueryHandler(
