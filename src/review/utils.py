@@ -33,6 +33,7 @@ from src.common.utils import send_result_to_submitter, send_submission, sanitize
 from src.strings import channel as strings_channel
 from src.strings import reviewer as strings_reviewer
 from src.strings import submitter as strings_submitter
+from src.review.handlers import save_submission_metadata
 
 """
 submission_meta = {
