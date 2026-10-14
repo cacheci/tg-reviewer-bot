@@ -292,7 +292,7 @@ async def approve_submission(
                 ],
             ]
         )
-    elif(main_channel_messages[0] != 0):
+    elif main_channel_messages and main_channel_messages[0] != 0:
         inline_keyboard = InlineKeyboardMarkup(
             [
                 [
@@ -687,7 +687,7 @@ async def force_continue_callback(update, context):
     primary_channel = str(TG_PUBLISH_CHANNEL[0])[4:] if str(TG_PUBLISH_CHANNEL[0]).startswith("-100") else TG_PUBLISH_CHANNEL[0]
 
     # add inline keyboard to jump to this submission and its comments in the publish channel
-    if not submission_meta["pending_send_channels"]:
+    if (not submission_meta["pending_send_channels"]) and (not trigger_coding):
         inline_keyboard = InlineKeyboardMarkup(
             [
                 [
@@ -711,7 +711,7 @@ async def force_continue_callback(update, context):
                 ],
             ]
         )
-    elif(main_channel_messages[0] != 0):
+    elif main_channel_messages and main_channel_messages[0] != 0:
         inline_keyboard = InlineKeyboardMarkup(
             [
                 [
