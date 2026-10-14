@@ -220,15 +220,15 @@ async def get_name_from_uid(context, user_id):
 
 
 def generate_userinfo_str(
-        id: int, fullname: str | None = None,
+        user_id: int, fullname: str | None = None,
         username: str | None = None,
         mention: bool = True,
-        boldfullname: bool = False
+        bold_fullname: bool = False
     ) -> str:
     userinfo_str = ""
 
     if fullname is not None:
-        if boldfullname:
+        if bold_fullname:
             fullname_sanitized = sanitize_userinfo(escape_markdown(fullname,version = 2))
             if fullname_sanitized.startswith("*"):
                 userinfo_str += fullname_sanitized
@@ -248,7 +248,7 @@ def generate_userinfo_str(
             userinfo_str += ("`" + escape_markdown(username, version = 2) + "`")
         userinfo_str += ", "
 
-    userinfo_str += "`" + str(id) + "`\\)"
+    userinfo_str += "`" + str(user_id) + "`\\)"
 
     return userinfo_str
 
@@ -274,7 +274,7 @@ async def check_submission(update):
             )
             return False
         Muted_user.unmute_user(update.effective_user.id)
-    forward_from = update._effective_message.forward_origin
+    forward_from = update.effective_message.forward_origin
     if forward_from is not None:
         if forward_from.type == forward_from.USER:
             if Banned_origin.is_banned(forward_from.sender_user.id):
@@ -284,10 +284,10 @@ async def check_submission(update):
             if Banned_origin.is_banned(forward_from.chat.id):
                 await update.message.reply_text(strings_submitter["origin_banned"])
                 return False
-    remiaining_count, max_count = Submitter.remaining_count_in_hour(
+    remaining_count, max_count = Submitter.remaining_count_in_hour(
         update.effective_user.id
     )
-    if remiaining_count <= 0:
+    if remaining_count <= 0:
         await update.effective_message.reply_text(
             strings_submitter["hourly_limit"].format(max_count=max_count)
         )
@@ -339,12 +339,12 @@ def sanitize_userinfo(text: str) -> str:
         userinfo = strings_others["blank_username"]
     return userinfo
 
-def get_binded_from_string(source: str, bindContent: str) -> tuple[str, bool]:
+def get_bound_from_string(source: str, bind_content: str) -> tuple[str, bool]:
     if source.startswith("${") and source.endswith("}"):
         content_list = source[2:-1].split(",")
 
         for item in content_list:
-            if item.startswith(bindContent):
-                return item[len(bindContent):], True
+            if item.startswith(bind_content):
+                return item[len(bind_content):], True
 
     return source, False

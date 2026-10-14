@@ -58,17 +58,17 @@ async def submitter_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             submitter_id = str(update.effective_chat.id)
         elif str(update.effective_chat.id) == TG_REVIEWER_GROUP:
             if update.message.reply_to_message:
-                replyto_user_id = str(update.message.reply_to_message.from_user.id)
+                reply_to_user_id = str(update.message.reply_to_message.from_user.id)
                 self_id = str((await context.bot.get_me()).id)
-                if replyto_user_id == self_id:
+                if reply_to_user_id == self_id:
                     tag_submitter_id = re.findall(r"#SUBMITTER_(\d+)", update.message.reply_to_message.text)
                     if tag_submitter_id:
                         submitter_id = tag_submitter_id[0]
                     else:
-                        update.message.reply_text(strings_others["provide_user_id"])
+                        await update.message.reply_text(strings_others["provide_user_id"])
                         return
                 else:
-                    submitter_id = replyto_user_id
+                    submitter_id = reply_to_user_id
             else:
                 submitter_id = str(update.effective_user.id)
         else:

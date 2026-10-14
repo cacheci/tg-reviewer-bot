@@ -71,7 +71,7 @@ async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if message.animation:  # GIF
             submission["media_id_list"].append(message.animation.file_id)
             submission["media_type_list"].append("animation")
-        # elif because gif is also a document but can not be sent as a group
+        # elif because GIF is also a document but can not be sent as a group
         elif message.document:
             submission["document_id_list"].append(message.document.file_id)
             submission["document_type_list"].append("document")
@@ -219,7 +219,7 @@ async def confirm_submission(
                     origin_message.sticker.file_id
                 )
                 submission["media_type_list"].append("sticker")
-                # just ignore any forward or realname infomation for sticker
+                # just ignore any forward or realname information for sticker
                 # in single submit mode because it is not allowed to have
                 # text with sticker
                 text = ""

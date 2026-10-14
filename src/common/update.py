@@ -74,7 +74,7 @@ async def _run_git(*args: str) -> tuple[int, str]:
         stderr=asyncio.subprocess.STDOUT,
     )
     output, _ = await process.communicate()
-    return process.returncode, output.decode(errors="replace").strip()
+    return process.return_code, output.decode(errors="replace").strip()
 
 
 async def _reply_in_chunks(message, text: str, limit: int = 4000) -> None:
@@ -106,8 +106,8 @@ async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     try:
-        returncode, current_branch = await _run_git("branch", "--show-current")
-        if returncode != 0 or not current_branch:
+        return_code, current_branch = await _run_git("branch", "--show-current")
+        if return_code != 0 or not current_branch:
             logger.error("Failed to determine the current Git branch")
             await message.reply_text(strings_others["update_branch_failed"])
             return
@@ -119,26 +119,26 @@ async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await message.reply_text(strings_others["update_invalid_branch"])
             return
 
-        returncode, _ = await _run_git("check-ref-format", "--branch", branch)
-        if returncode != 0:
+        return_code, _ = await _run_git("check-ref-format", "--branch", branch)
+        if return_code != 0:
             await message.reply_text(strings_others["update_invalid_branch"])
             return
 
         if remote is None:
-            returncode, configured_remote = await _run_git(
+            return_code, configured_remote = await _run_git(
                 "config",
                 "--get",
                 f"branch.{branch}.remote",
             )
-            remote = configured_remote if returncode == 0 and configured_remote else "origin"
+            remote = configured_remote if return_code == 0 and configured_remote else "origin"
 
         if commit is not None and not re.fullmatch(r"[0-9a-fA-F]{4,40}", commit):
             await message.reply_text(strings_others["update_invalid_commit"])
             return
 
         if not force:
-            returncode, worktree_status = await _run_git("status", "--porcelain")
-            if returncode != 0:
+            return_code, worktree_status = await _run_git("status", "--porcelain")
+            if return_code != 0:
                 logger.error("Failed to inspect the Git worktree")
                 await message.reply_text(strings_others["update_failed"])
                 return
@@ -146,8 +146,8 @@ async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 await message.reply_text(strings_others["update_dirty"])
                 return
 
-        returncode, old_commit = await _run_git("rev-parse", "HEAD")
-        if returncode != 0:
+        return_code, old_commit = await _run_git("rev-parse", "HEAD")
+        if return_code != 0:
             logger.error("Failed to determine the current Git commit")
             await message.reply_text(strings_others["update_failed"])
             return
@@ -157,65 +157,65 @@ async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
 
         if commit is not None:
-            returncode, git_output = await _run_git(
+            return_code, git_output = await _run_git(
                 "fetch",
                 "--force",
                 "--",
                 remote,
                 branch,
             )
-            if returncode == 0:
-                returncode, target_commit = await _run_git(
+            if return_code == 0:
+                return_code, target_commit = await _run_git(
                     "rev-parse",
                     "--verify",
                     f"{commit}^{{commit}}",
                 )
-                if returncode != 0:
+                if return_code != 0:
                     await message.reply_text(
                         strings_others["update_invalid_commit"]
                     )
                     return
-            if returncode == 0:
-                returncode, _ = await _run_git(
+            if return_code == 0:
+                return_code, _ = await _run_git(
                     "merge-base",
                     "--is-ancestor",
                     target_commit,
                     "FETCH_HEAD",
                 )
-                if returncode != 0:
+                if return_code != 0:
                     await message.reply_text(
                         strings_others["update_invalid_commit"]
                     )
                     return
-            if returncode == 0:
+            if return_code == 0:
                 if force:
-                    returncode, git_output = await _run_git(
+                    return_code, git_output = await _run_git(
                         "reset",
                         "--hard",
                         target_commit,
                     )
                 else:
-                    returncode, git_output = await _run_git(
+                    return_code, git_output = await _run_git(
                         "merge",
                         "--ff-only",
                         target_commit,
                     )
         elif force:
-            returncode, git_output = await _run_git(
+            return_code, git_output = await _run_git(
                 "fetch",
                 "--force",
                 "--",
                 remote,
                 branch,
             )
-            if returncode == 0:
-                returncode, git_output = await _run_git(
+            if return_code == 0:
+                return_code, git_output = await _run_git(
                     "reset",
                     "--hard",
                     "FETCH_HEAD",
                 )
         else:
-            returncode, git_output = await _run_git(
+            return_code, git_output = await _run_git(
                 "pull",
                 "--ff-only",
                 "--",
@@ -227,17 +227,17 @@ async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await message.reply_text(strings_others["update_failed"])
         return
 
-    if returncode != 0:
+    if return_code != 0:
         logger.error(
             "Git update failed with exit code %s: %s",
-            returncode,
+            return_code,
             git_output.replace(remote, "<remote>"),
         )
         await message.reply_text(strings_others["update_failed"])
         return
 
-    returncode, new_commit = await _run_git("rev-parse", "HEAD")
-    if returncode != 0:
+    return_code, new_commit = await _run_git("rev-parse", "HEAD")
+    if return_code != 0:
         logger.error("Failed to determine the updated Git commit")
         await message.reply_text(strings_others["update_failed"])
         return
@@ -253,24 +253,24 @@ async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         return
 
-    returncode, commit_log = await _run_git(
+    return_code, commit_log = await _run_git(
         "log",
         "--reverse",
         "--format=%h %s",
         f"{old_commit}..{new_commit}",
     )
-    if returncode != 0:
+    if return_code != 0:
         logger.error("Failed to list updated Git commits")
         await message.reply_text(strings_others["update_failed"])
         return
 
     if not commit_log:
-        returncode, commit_log = await _run_git(
+        return_code, commit_log = await _run_git(
             "log",
             "--format=%h %s",
             f"{new_commit}..{old_commit}",
         )
-        if returncode != 0:
+        if return_code != 0:
             logger.error("Failed to list removed Git commits")
             await message.reply_text(strings_others["update_failed"])
             return

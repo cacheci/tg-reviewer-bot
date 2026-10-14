@@ -1,4 +1,4 @@
-import os, json, re, logging
+import os, json, logging
 from src.strings import others as strings_others
 
 logger = logging.getLogger(__name__)
@@ -62,9 +62,9 @@ if data_dir is not None:
             TG_IMAGE_DUPLICATE_DAYS     = int(str(data.get('non_required', {}).get('TG_IMAGE_DUPLICATE_DAYS', 7)))
             TG_IMAGE_DUPLICATE_THRESHOLD = int(str(data.get('non_required', {}).get('TG_IMAGE_DUPLICATE_THRESHOLD', 5)))
 
-    except (json.JSONDecodeError) as e:
+    except json.JSONDecodeError as e:
         raise EnvironmentError("Warning: Config JSON found decode failed!")
-    except (PermissionError) as e:
+    except PermissionError as e:
         raise EnvironmentError("Warning: Failed to read JSON file permission denied!")
 else:
     try:

@@ -96,7 +96,7 @@ def save_submission_metadata(review_message, submission_meta, status):
 async def reply_review_message(
     first_submission_message, submission_meta, context
 ):
-    # reply the first submission_message and show the inline keyboard to let the reviewers to decide whether to publish it
+    # reply the first submission_message and show the inline keyboard to let the reviewers decide whether to publish it
     inline_keyboard = InlineKeyboardMarkup(
         [
             [
@@ -222,7 +222,7 @@ async def reject_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await query.answer()
 
-    # send the submittion to rejected channel
+    # send the submission to rejected channel
     await send_to_rejected_channel(
         update=update, context=context, submission_meta=submission_meta
     )
@@ -258,13 +258,13 @@ async def send_to_rejected_channel(
         ]
     )
 
-    # if has rejected channel and not IGNORE, forward rejected message to it
+    # if it has rejected channel and not IGNORE, forward rejected message to it
     if (
         TG_REJECTED_CHANNEL
         and not Banned_user.is_banned(submission_meta["submitter"][0])
         and submission_meta["reviewer"][user_id][2] != len(REJECTION_REASON)
     ):
-        # send the submittion to rejected channel
+        # send the submission to rejected channel
         sent_message = await send_submission(
             context=context,
             chat_id=TG_REJECTED_CHANNEL,
@@ -659,8 +659,8 @@ def get_rejection_reason_text(option):
     return option_text
 
 
-def get_submission_status(submission_meta, longago_status=0):
-    if longago_status == SubmissionStatus.APPROVED:
+def get_submission_status(submission_meta, long_ago_status=0):
+    if long_ago_status == SubmissionStatus.APPROVED:
         return SubmissionStatus.APPROVED, ""
 
     status = -1
@@ -671,8 +671,8 @@ def get_submission_status(submission_meta, longago_status=0):
     approve_num = review_options.count(
         ReviewChoice.NSFW
     ) + review_options.count(ReviewChoice.SFW)
-    reject_noreason_num = review_options.count(ReviewChoice.REJECT)
-    reject_reason_num = len(review_options) - approve_num - reject_noreason_num
+    reject_no_reason_num = review_options.count(ReviewChoice.REJECT)
+    reject_reason_num = len(review_options) - approve_num - reject_no_reason_num
 
     if approve_num >= APPROVE_NUMBER_REQUIRED:
         status = SubmissionStatus.APPROVED
@@ -687,17 +687,17 @@ def get_submission_status(submission_meta, longago_status=0):
             ]:
                 rejection_reason = get_rejection_reason_text(review_option)
                 break
-    elif reject_noreason_num >= REJECT_NUMBER_REQUIRED or longago_status == SubmissionStatus.REJECTED:
+    elif reject_no_reason_num >= REJECT_NUMBER_REQUIRED or long_ago_status == SubmissionStatus.REJECTED:
         status = SubmissionStatus.REJECTED_NO_REASON
     else:
         status = SubmissionStatus.PENDING
     return status, rejection_reason
 
 
-def generate_submission_meta_string(submission_meta, longago_status=0):
+def generate_submission_meta_string(submission_meta, long_ago_status=0):
     # generate the submission_meta string from the submission_meta
     # get status and rejection reason
-    status, rejection_reason = get_submission_status(submission_meta, longago_status)
+    status, rejection_reason = get_submission_status(submission_meta, long_ago_status)
 
     # submitter_string
     submitter_id, submitter_username, submitter_fullname, _ = submission_meta[
@@ -705,7 +705,7 @@ def generate_submission_meta_string(submission_meta, longago_status=0):
     ]
     submitter_string = strings_reviewer["submitter_label"].format(
         submitter=generate_userinfo_str(
-            id=int(submitter_id),
+            user_id=int(submitter_id),
             username=submitter_username,
             fullname=submitter_fullname,
         )
@@ -743,7 +743,7 @@ def generate_submission_meta_string(submission_meta, longago_status=0):
             reviewers_string += strings_reviewer["reviewer_line"].format(
                 sign=option_sign,
                 reviewer=generate_userinfo_str(
-                    id=int(reviewer_id),
+                    user_id=int(reviewer_id),
                     fullname=reviewer_fullname,
                     username=reviewer_username,
                 ),

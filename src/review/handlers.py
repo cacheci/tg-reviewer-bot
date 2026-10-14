@@ -70,8 +70,8 @@ async def approve_submission(
     stats_month = submission_meta.setdefault("stats_month", {})
     reviewer_months = stats_month.setdefault("reviewers", {})
 
-    submission_longago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
-    # if the reviwer is the submitter
+    submission_long_ago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
+    # if the reviewer is the submitter
     if not TG_SELF_APPROVE and reviewer_id == submission_meta["submitter"][0]:
         await query.answer(strings_reviewer["cannot_self_approve"])
         return
@@ -90,10 +90,6 @@ async def approve_submission(
                 IdempotencyRecord.complete(operation_key)
         await query_decision(update, context)
         return
-    approve_count = sum(
-        reviewer[2] in (ReviewChoice.SFW, ReviewChoice.NSFW)
-        for reviewer in submission_meta["reviewer"].values()
-    )
     if not IdempotencyRecord.claim_review(operation_key, str(action)):
         await query.answer(strings_reviewer["review_processed"], show_alert=True)
         return
@@ -105,7 +101,7 @@ async def approve_submission(
         action,
     ]
 
-    # increse reviewer approve count
+    # increase reviewer approve count
     reviewer_month = current_month_key()
     reviewer_months[reviewer_id] = reviewer_month
     save_submission_metadata(review_message, submission_meta, "pending")
@@ -120,7 +116,7 @@ async def approve_submission(
     # if the submission has not been approved by enough reviewers
     if (
         (review_options.count(ReviewChoice.NSFW) + review_options.count(ReviewChoice.SFW) < APPROVE_NUMBER_REQUIRED)
-        and not submission_longago
+        and not submission_long_ago
     ):
         await review_message.edit_text(
             text=generate_submission_meta_string(submission_meta),
@@ -141,7 +137,7 @@ async def approve_submission(
         await query.answer(strings_reviewer["submission_finalizing"], show_alert=True)
         return
     await query.answer(strings_reviewer["approved_success"])
-    # increse submitter approved count
+    # increase submitter approved count
     result_month = current_month_key()
     stats_month["result"] = result_month
     save_submission_metadata(review_message, submission_meta, "approved")
@@ -150,7 +146,7 @@ async def approve_submission(
         "approved_count",
         month=result_month,
     )
-    # increse reviewer count
+    # increase reviewer count
     for reviewer_id in submission_meta["reviewer"]:
         if submission_meta["reviewer"][reviewer_id][2] not in [
             ReviewChoice.SFW,
@@ -161,14 +157,12 @@ async def approve_submission(
                 "reject_but_approved_count",
                 month=reviewer_months.get(reviewer_id, current_month_key()),
             )
-    # then send this submission to the publish channel
+    # then send this submission to the publishing channel
     main_channel_messages = None
     submission_meta["sent_msg"] = {}
     save_submission_metadata(review_message, submission_meta, "approved")
     submission_meta["pending_send_channels"] = TG_PUBLISH_CHANNEL
     trigger_coding = False
-
-    has_video = False
 
     pending_send_channels = submission_meta["pending_send_channels"].copy()
     for index, publish_channel in enumerate(pending_send_channels):
@@ -200,7 +194,6 @@ async def approve_submission(
                 **submission_meta,
                 "review_message_id": review_message.message_id,
             }
-            has_video = True
         else:
             tracking_meta = {
                 "review_message_id": review_message.message_id,
@@ -236,8 +229,8 @@ async def approve_submission(
         submission_meta["pending_send_channels"] = pending_send_channels[(index + 1):]
 
         # Persist published message IDs before further Telegram requests.
-        # If id = 0, it's meaningless infomation. Skip it.
-        if (trigger_coding == False):
+        # If id = 0, it's meaningless information. Skip it.
+        if not trigger_coding:
             sent_message_ids = [message.message_id for message in sent_messages]
             if skip_all is not None:
                 sent_message_ids.append(skip_all.message_id)
@@ -247,7 +240,7 @@ async def approve_submission(
 
         # edit the skip_all message
         if skip_all:
-            if (trigger_coding == False):
+            if not trigger_coding:
                 url_parts = sent_messages[-1].link.rsplit("/", 1)
                 next_url = url_parts[0] + "/" + str(int(url_parts[-1]) + 1)
                 inline_keyboard = InlineKeyboardMarkup(
@@ -264,11 +257,11 @@ async def approve_submission(
         # so there must be a better way to skip. Now we use
         # `trigger_coding`, not `has_video` because we configure
         # comment area only for channels that will trigger coding.
-        if (trigger_coding):
+        if trigger_coding:
             break
 
     primary_channel = str(TG_PUBLISH_CHANNEL[0])[4:] if str(TG_PUBLISH_CHANNEL[0]).startswith("-100") else TG_PUBLISH_CHANNEL[0]
-    # add inline keyboard to jump to this submission and its comments in the publish channel
+    # add inline keyboard to jump to this submission and its comments in the publishing channel
     if (not submission_meta["pending_send_channels"]) and (not trigger_coding):
         inline_keyboard = InlineKeyboardMarkup(
             [
@@ -327,15 +320,15 @@ async def approve_submission(
             ]
         )
 
-    longago_status = 0 if not submission_longago else SubmissionStatus.APPROVED
+    long_ago_status = 0 if not submission_long_ago else SubmissionStatus.APPROVED
 
     await review_message.edit_text(
-        text=generate_submission_meta_string(submission_meta,longago_status=longago_status),
+        text=generate_submission_meta_string(submission_meta,long_ago_status=long_ago_status),
         parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=inline_keyboard,
     )
     # send result to submitter
-    if (main_channel_messages[0] != 0):
+    if main_channel_messages[0] != 0:
         await send_result_to_submitter(
             context,
             submission_meta["submitter"][0],
@@ -398,7 +391,7 @@ async def reject_submission(
         await query.answer(strings_reviewer["review_processed"], show_alert=True)
         return
 
-    submission_longago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
+    submission_long_ago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
     # if REJECT_DUPLICATE, only one reviewer is enough
     if action == ReviewChoice.REJECT_DUPLICATE:
         submission_meta["reviewer"][reviewer_id] = [
@@ -418,21 +411,12 @@ async def reject_submission(
             )
             return
         await query.answer(strings_reviewer["rejected_success"])
-        inline_keyboard_content = []
-        inline_keyboard_content.append(
-            [
-                InlineKeyboardButton(
-                    strings_reviewer["reply_submitter"],
-                    switch_inline_query_current_chat="/comment ",
-                )
-            ]
-        )
-        # send the submittion to rejected channel
+        # send the submission to rejected channel
         await send_to_rejected_channel(
             update=update, context=context, submission_meta=submission_meta
         )
 
-        # increse submitter rejected count
+        # increase submitter rejected count
         result_month = current_month_key()
         stats_month["result"] = result_month
         save_submission_metadata(review_message, submission_meta, "rejected")
@@ -441,7 +425,7 @@ async def reject_submission(
             "rejected_count",
             month=result_month,
         )
-        # increse reviewer count
+        # increase reviewer count
         Reviewer.count_increase(
             reviewer_id, "reject_count", month=reviewer_month
         )
@@ -469,7 +453,7 @@ async def reject_submission(
     reviewer_month = current_month_key()
     reviewer_months[reviewer_id] = reviewer_month
     save_submission_metadata(review_message, submission_meta, "pending")
-    # increse reviewer reject count
+    # increase reviewer reject count
     Reviewer.count_increase(
         reviewer_id, "reject_count", month=reviewer_month
     )
@@ -480,7 +464,7 @@ async def reject_submission(
     # if the submission has not been rejected by enough reviewers
     if (
         (review_options.count(ReviewChoice.REJECT) < REJECT_NUMBER_REQUIRED)
-        and not submission_longago
+        and not submission_long_ago
     ):
         await review_message.edit_text(
             text=generate_submission_meta_string(submission_meta),
@@ -501,7 +485,7 @@ async def reject_submission(
         await query.answer(strings_reviewer["submission_finalizing"], show_alert=True)
         return
     await query.answer(strings_reviewer["rejected_success"])
-    # increse submitter rejected count
+    # increase submitter rejected count
     result_month = current_month_key()
     stats_month["result"] = result_month
     save_submission_metadata(review_message, submission_meta, "rejected")
@@ -510,7 +494,7 @@ async def reject_submission(
         "rejected_count",
         month=result_month,
     )
-    # increse reviewer count
+    # increase reviewer count
     for reviewer_id in submission_meta["reviewer"]:
         if submission_meta["reviewer"][reviewer_id][2] in [
             ReviewChoice.SFW,
@@ -555,9 +539,9 @@ async def reject_submission(
             )
         ]
     )
-    longago_status = 0 if not submission_longago else SubmissionStatus.REJECTED
+    long_ago_status = 0 if not submission_long_ago else SubmissionStatus.REJECTED
     await review_message.edit_text(
-        text=generate_submission_meta_string(submission_meta, longago_status=longago_status),
+        text=generate_submission_meta_string(submission_meta, long_ago_status=long_ago_status),
         parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=InlineKeyboardMarkup(inline_keyboard_content),
     )
@@ -574,7 +558,7 @@ async def force_continue_callback(update, context):
     )
 
     query = update.callback_query
-    await query.answer(strings_reviewer["excuting"])
+    await query.answer(strings_reviewer["executing"])
     reviewer_id = query.from_user.id
 
     operation_key = f"review-force-continue:{review_message.chat_id}:{review_message.message_id}"
@@ -584,7 +568,7 @@ async def force_continue_callback(update, context):
         "review_force_continue",
         str(reviewer_id),
     ):
-        await query.answer(strings_reviewer["excuting"], show_alert=True)
+        await query.answer(strings_reviewer["executing"], show_alert=True)
         return
 
     # get options from all reviewers
@@ -660,7 +644,7 @@ async def force_continue_callback(update, context):
         submission_meta["pending_send_channels"] = pending_send_channels[(index + 1):]
 
         # Persist published message IDs before further Telegram requests.
-        if (trigger_coding == False):
+        if not trigger_coding:
             sent_message_ids = [message.message_id for message in sent_messages]
             if skip_all is not None:
                 sent_message_ids.append(skip_all.message_id)
@@ -670,7 +654,7 @@ async def force_continue_callback(update, context):
 
         # edit the skip_all message
         if skip_all:
-            if (trigger_coding == False):
+            if not trigger_coding:
                 url_parts = sent_messages[-1].link.rsplit("/", 1)
                 next_url = url_parts[0] + "/" + str(int(url_parts[-1]) + 1)
                 inline_keyboard = InlineKeyboardMarkup(
@@ -688,7 +672,7 @@ async def force_continue_callback(update, context):
 
     primary_channel = str(TG_PUBLISH_CHANNEL[0])[4:] if str(TG_PUBLISH_CHANNEL[0]).startswith("-100") else TG_PUBLISH_CHANNEL[0]
 
-    # add inline keyboard to jump to this submission and its comments in the publish channel
+    # add inline keyboard to jump to this submission and its comments in the publishing channel
     if (not submission_meta["pending_send_channels"]) and (not trigger_coding):
         inline_keyboard = InlineKeyboardMarkup(
             [
@@ -747,17 +731,17 @@ async def force_continue_callback(update, context):
             ]
         )
 
-    submission_longago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
-    longago_status = 0 if not submission_longago else SubmissionStatus.APPROVED
+    submission_long_ago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
+    long_ago_status = 0 if not submission_long_ago else SubmissionStatus.APPROVED
 
     await review_message.edit_text(
-        text=generate_submission_meta_string(submission_meta,longago_status=longago_status),
+        text=generate_submission_meta_string(submission_meta,long_ago_status=long_ago_status),
         parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=inline_keyboard,
     )
 
     # send result to submitter
-    if ((main_channel_messages[0] != 0) and should_send_to_submitter):
+    if (main_channel_messages[0] != 0) and should_send_to_submitter:
         await send_result_to_submitter(
             context,
             submission_meta["submitter"][0],
@@ -840,10 +824,10 @@ async def withdraw_decision(
 
 async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
-    if (message.from_user is not None):
-        # ID 777000 is offical telegram service, meaning it's
-        # forwarded form channel automaticly as comment area.
-        if ((message.from_user.id != 777000)):
+    if message.from_user is not None:
+        # ID 777000 is official telegram service, meaning it's
+        # forwarded form channel automatically as comment area.
+        if message.from_user.id != 777000:
             return
     
     message_text = (
@@ -884,7 +868,7 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
         else:
             is_primary = False
 
-        # Message from 777000 have only source that, is auto forward.
+        # Message from 777000 have an only source that is auto-forwarded.
         sent_message_ids = [
             message.forward_origin.message_id + offset for offset in range(tracking_meta["media_count"])
         ]
@@ -969,7 +953,7 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
 
                 trigger_coding = (sent_messages[-1].id == 0)
 
-                if (trigger_coding == False):
+                if not trigger_coding:
                     sent_message_ids = [message.message_id for message in sent_messages]
                     if skip_all is not None:
                         sent_message_ids.append(skip_all.message_id)
@@ -979,7 +963,7 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
                 
                 # edit the skip_all message
                 if skip_all:
-                    if (trigger_coding == False):
+                    if not trigger_coding:
                         url_parts = sent_messages[-1].link.rsplit("/", 1)
                         next_url = url_parts[0] + "/" + str(int(url_parts[-1]) + 1)
                         inline_keyboard = InlineKeyboardMarkup(
@@ -991,23 +975,23 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
                     else:
                         await skip_all.delete()
 
-                if (trigger_coding):
+                if trigger_coding:
                     break
 
         await context.bot.edit_message_text(
             chat_id=TG_REVIEWER_GROUP,
             message_id=tracking_meta["review_message_id"],
-            text = generate_submission_meta_string(tracking_meta,longago_status=SubmissionStatus.APPROVED)
+            text = generate_submission_meta_string(tracking_meta,long_ago_status=SubmissionStatus.APPROVED)
         )
         save_submission_metadata_with_id(tracking_meta["review_message_id"], tracking_meta, "approved")
     else:
         return
 
-publish_channel_comment_intlist = [
+publish_channel_comment_int_list = [
     int(channel_id) for channel_id in TG_PUBLISH_CHANNEL_COMMENTAREA
 ] if TG_PUBLISH_CHANNEL_COMMENTAREA is not None else []
 
 channel_trace_handler = MessageHandler(
-    filters.Chat(chat_id=publish_channel_comment_intlist),
+    filters.Chat(chat_id=publish_channel_comment_int_list),
     channel_trace_to_continue,
 )

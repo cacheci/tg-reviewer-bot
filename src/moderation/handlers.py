@@ -6,7 +6,7 @@ from telegram.helpers import escape_markdown
 
 from src.config.settings import TG_REVIEWER_GROUP
 from src.database.operations import Banned_origin, Banned_user, Muted_user
-from src.common.utils import get_name_from_uid, is_integer, generate_userinfo_str, get_binded_from_string
+from src.common.utils import get_name_from_uid, is_integer, generate_userinfo_str, get_bound_from_string
 from src.strings import others as strings_others
 from src.strings import submitter as strings_submitter
 
@@ -25,11 +25,11 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE, is_spam: 
                 arg_1 = arg_1[11:]
 
     if not arg_2:
-        # Try find unprovided id or reason from replied message
+        # Try to find unprovided id or reason from replied message
         if update.message.reply_to_message:
-            replyto_user_id = str(update.message.reply_to_message.from_user.id)
+            reply_to_user_id = str(update.message.reply_to_message.from_user.id)
             self_id = str((await context.bot.get_me()).id)
-            if replyto_user_id == self_id:
+            if reply_to_user_id == self_id:
                 # Id not provided, meaning arg is reason if exists.
                 tag_unban_id = re.findall(r"#UNBAN_(\d+)", update.message.reply_to_message.text)
                 tag_submitter_id = re.findall(r"#SUBMITTER_(\d+)", update.message.reply_to_message.text)
@@ -82,7 +82,7 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE, is_spam: 
         )
         return
 
-    # prevent dumplicated ban
+    # prevent duplicated ban
     if Banned_user.is_banned(user):
         await update.message.reply_text(
             strings_others["already_banned"].format(target=user)
@@ -121,13 +121,15 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE, is_spam: 
 
 
 async def get_banned_user_info(context: ContextTypes.DEFAULT_TYPE, user, mention = True):
-    banned_userinfo = generate_userinfo_str(id=int(user.user_id),username=user.user_name,fullname=user.user_fullname,boldfullname=True,mention=mention)
+    banned_userinfo = generate_userinfo_str(user_id=int(user.user_id), username=user.user_name, fullname=user.user_fullname,
+                                            bold_fullname=True, mention=mention)
     banned_by_username, banned_by_fullname = await get_name_from_uid(
         context, user.banned_by
     )
-    banned_by_userinfo = generate_userinfo_str(id=int(user.banned_by),username=banned_by_username,fullname=banned_by_fullname,boldfullname=True,mention=mention)
+    banned_by_userinfo = generate_userinfo_str(user_id=int(user.banned_by), username=banned_by_username, fullname=banned_by_fullname,
+                                               bold_fullname=True, mention=mention)
 
-    ban_reason, ban_bind_message = get_binded_from_string(user['banned_reason'], "bindmsg:")
+    ban_reason, ban_bind_message = get_bound_from_string(user['banned_reason'], "bindmsg:")
     if ban_bind_message:
         ban_reason = strings_others["banned_reason_is_message"].format(
             url = f"https://t.me/c/{TG_REVIEWER_GROUP[4:]}/{ban_reason}"
@@ -279,15 +281,15 @@ async def ban_origin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_banned_origin_info(context: ContextTypes.DEFAULT_TYPE, origin):
-    banned_origininfo = f"`{origin.origin_id}`"
+    banned_origin = f"`{origin.origin_id}`"
     banned_by_username, banned_by_fullname = await get_name_from_uid(
         context, origin.banned_by
     )
-    banned_by_origininfo = generate_userinfo_str(id=int(origin.banned_by),fullname=banned_by_fullname,username=banned_by_username)
+    banned_by_origin = generate_userinfo_str(user_id=int(origin.banned_by), fullname=banned_by_fullname, username=banned_by_username)
     origins_string = strings_others["banned_info"].format(
-        target=banned_origininfo,
+        target=banned_origin,
         date=escape_markdown(str(origin['banned_date']), version=2),
-        operator=banned_by_origininfo,
+        operator=banned_by_origin,
         reason=escape_markdown(origin['banned_reason'], version=2),
     )
     return origins_string
@@ -409,15 +411,15 @@ async def mute_handler(
         context, update.effective_user.id
     )
     target_info = generate_userinfo_str(
-        id=int(user), username=user_name, fullname=user_fullname, boldfullname=True
+        user_id=int(user), username=user_name, fullname=user_fullname, bold_fullname=True
     )
     operator_info = generate_userinfo_str(
-        id=update.effective_user.id,
+        user_id=update.effective_user.id,
         username=operator_name,
         fullname=operator_fullname,
-        boldfullname=True,
+        bold_fullname=True,
     )
-    bound_message_id, is_bound_message = get_binded_from_string(reason, "bindmsg:")
+    bound_message_id, is_bound_message = get_bound_from_string(reason, "bindmsg:")
     display_reason = (
         strings_others["banned_reason_is_message"].format(
             url=f"https://t.me/c/{TG_REVIEWER_GROUP[4:]}/{bound_message_id}"
