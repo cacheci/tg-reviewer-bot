@@ -1,7 +1,7 @@
 import logging
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import MessageOriginType
+from telegram.constants import MessageOriginType, ParseMode
 from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
@@ -79,6 +79,13 @@ async def reply_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if message.media_group_id in media_groups:
             return
         media_groups[message.media_group_id] = submission
+    elif message.sticker:
+        await update.message.reply_text(
+            text=strings_submitter["sticker_reject"],
+            do_quote=True,
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return
 
     # show options as an inline keyboard
     keyboard = [
@@ -214,15 +221,6 @@ async def confirm_submission(
                     origin_message.video.file_id
                 )
                 submission["media_type_list"].append("video")
-            if origin_message.sticker:
-                submission["media_id_list"].append(
-                    origin_message.sticker.file_id
-                )
-                submission["media_type_list"].append("sticker")
-                # just ignore any forward or realname information for sticker
-                # in single submit mode because it is not allowed to have
-                # text with sticker
-                text = ""
             if origin_message.animation:  # GIF
                 submission["media_id_list"].append(
                     origin_message.animation.file_id

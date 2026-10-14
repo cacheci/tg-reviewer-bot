@@ -78,6 +78,7 @@
     "operation_processed": "该投稿操作已经处理",
     "processing": "投稿正在处理中",
     "duplicate_detected": "😢 很抱歉，近期存在相同投稿哦！本次投稿将不会生效。",
+    "sticker_reject": "不支持的投稿内容类型！请以图片格式发送。\n\n参见：[如何以图片格式发送](https://t.me/c/1341930464/208739)",
     "duplicate_check_failed": "😢 投稿失败，请联系管理员。",
     "cancelled": "投稿已取消",
     "success": "❤️ 投稿成功，阿里嘎多！我们会在稍后通知您审核结果。",
