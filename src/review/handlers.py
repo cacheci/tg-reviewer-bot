@@ -166,6 +166,7 @@ async def approve_submission(
     submission_meta["sent_msg"] = {}
     save_submission_metadata(review_message, submission_meta, "approved")
     submission_meta["pending_send_channels"] = TG_PUBLISH_CHANNEL
+    trigger_coding = False
 
     has_video = False
 
@@ -592,6 +593,7 @@ async def force_continue_callback(update, context):
     ]
     main_channel_messages = submission_meta["sent_msg"].get(TG_PUBLISH_CHANNEL[0])
     should_send_to_submitter = False
+    trigger_coding = False
 
     pending_send_channels = submission_meta["pending_send_channels"].copy()
     for index, publish_channel in enumerate(pending_send_channels):
