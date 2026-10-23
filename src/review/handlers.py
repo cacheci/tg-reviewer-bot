@@ -576,10 +576,22 @@ async def force_continue_callback(update, context):
         reviewer[2] for reviewer in submission_meta["reviewer"].values()
     ]
     main_channel_messages = submission_meta["sent_msg"].get(TG_PUBLISH_CHANNEL[0])
+    primary_message_id = main_channel_messages[0] if main_channel_messages else None
     should_send_to_submitter = False
     trigger_coding = False
 
     pending_send_channels = submission_meta["pending_send_channels"].copy()
+    if pending_send_channels or primary_message_id in (None, 0):
+        pending_channel_keys = {str(channel) for channel in pending_send_channels}
+        attempted_channels = [
+            channel
+            for channel in TG_PUBLISH_CHANNEL
+            if str(channel) not in pending_channel_keys
+        ]
+        if attempted_channels:
+            pending_send_channels = [attempted_channels[-1]] + pending_send_channels
+            submission_meta["pending_send_channels"] = pending_send_channels
+
     for index, publish_channel in enumerate(pending_send_channels):
         # if the submission is nsfw
         skip_all = None
@@ -636,8 +648,12 @@ async def force_continue_callback(update, context):
             has_spoiler=has_spoiler,
         )
 
-        if submission_meta["sent_msg"] == {}:
+        if (
+            (not main_channel_messages or main_channel_messages[0] == 0)
+            and str(publish_channel) == str(TG_PUBLISH_CHANNEL[0])
+        ):
             main_channel_messages = [message.message_id for message in sent_messages]
+            primary_message_id = main_channel_messages[0]
             should_send_to_submitter = True
 
         trigger_coding = (sent_messages[-1].id == 0)
@@ -673,16 +689,20 @@ async def force_continue_callback(update, context):
     primary_channel = str(TG_PUBLISH_CHANNEL[0])[4:] if str(TG_PUBLISH_CHANNEL[0]).startswith("-100") else TG_PUBLISH_CHANNEL[0]
 
     # add inline keyboard to jump to this submission and its comments in the publishing channel
-    if (not submission_meta["pending_send_channels"]) and (not trigger_coding):
+    if (
+        (not submission_meta["pending_send_channels"])
+        and (not trigger_coding)
+        and primary_message_id not in (None, 0)
+    ):
         inline_keyboard = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
-                        strings_channel["view"], url=f"https://t.me/c/{primary_channel}/{main_channel_messages[0]}"
+                        strings_channel["view"], url=f"https://t.me/c/{primary_channel}/{primary_message_id}"
                     ),
                     InlineKeyboardButton(
                         strings_channel["view_comments"],
-                        url=f"https://t.me/c/{primary_channel}/{main_channel_messages[0]}?comment=1",
+                        url=f"https://t.me/c/{primary_channel}/{primary_message_id}?comment=1",
                     ),
                 ],
                 [
@@ -697,16 +717,16 @@ async def force_continue_callback(update, context):
                 ],
             ]
         )
-    elif main_channel_messages and main_channel_messages[0] != 0:
+    elif primary_message_id not in (None, 0):
         inline_keyboard = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
-                        strings_channel["view"], url=f"https://t.me/c/{primary_channel}/{main_channel_messages[0]}"
+                        strings_channel["view"], url=f"https://t.me/c/{primary_channel}/{primary_message_id}"
                     ),
                     InlineKeyboardButton(
                         strings_channel["view_comments"],
-                        url=f"https://t.me/c/{primary_channel}/{main_channel_messages[0]}?comment=1",
+                        url=f"https://t.me/c/{primary_channel}/{primary_message_id}?comment=1",
                     ),
                 ],
                 [
@@ -741,7 +761,7 @@ async def force_continue_callback(update, context):
     )
 
     # send result to submitter
-    if (main_channel_messages[0] != 0) and should_send_to_submitter:
+    if primary_message_id not in (None, 0) and should_send_to_submitter:
         await send_result_to_submitter(
             context,
             submission_meta["submitter"][0],
@@ -751,11 +771,11 @@ async def force_continue_callback(update, context):
                 [
                     [
                         InlineKeyboardButton(
-                            strings_channel["view"], url=f"https://t.me/c/{primary_channel}/{main_channel_messages[0]}"
+                            strings_channel["view"], url=f"https://t.me/c/{primary_channel}/{primary_message_id}"
                         ),
                         InlineKeyboardButton(
                             strings_channel["view_comments"],
-                            url=f"https://t.me/c/{primary_channel}/{main_channel_messages[0]}?comment=1",
+                            url=f"https://t.me/c/{primary_channel}/{primary_message_id}?comment=1",
                         ),
                     ]
                 ]
