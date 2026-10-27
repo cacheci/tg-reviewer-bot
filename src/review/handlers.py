@@ -90,7 +90,8 @@ async def approve_submission(
         return
 
     operation_key = review_operation_key(review_message, reviewer_id)
-    if reviewer_id in submission_meta["reviewer"]:
+    already_voted = reviewer_id in submission_meta["reviewer"]
+    if already_voted:
         if not IdempotencyRecord.get(operation_key):
             if IdempotencyRecord.claim(
                 operation_key,
@@ -98,26 +99,27 @@ async def approve_submission(
                 str(submission_meta["reviewer"][reviewer_id][2]),
             ):
                 IdempotencyRecord.complete(operation_key)
-        await query_decision(update, context)
-        return
-    if not IdempotencyRecord.claim_review(operation_key, str(action)):
+        if submission_meta["reviewer"][reviewer_id][2] != action or not submission_long_ago:
+            await query_decision(update, context)
+            return
+    elif not IdempotencyRecord.claim_review(operation_key, str(action)):
         await query.answer(strings_reviewer["review_processed"], show_alert=True)
         return
 
-    # if the reviewer has not rejected the submission
-    submission_meta["reviewer"][reviewer_id] = [
-        reviewer_username,
-        reviewer_fullname,
-        action,
-    ]
+    if not already_voted:
+        submission_meta["reviewer"][reviewer_id] = [
+            reviewer_username,
+            reviewer_fullname,
+            action,
+        ]
 
-    # increase reviewer approve count
-    reviewer_month = current_month_key()
-    reviewer_months[reviewer_id] = reviewer_month
-    save_submission_metadata(review_message, submission_meta, "pending")
-    Reviewer.count_increase(
-        reviewer_id, "approve_count", month=reviewer_month
-    )
+        # Count only a new vote; a repeated vote can trigger timeout finalization.
+        reviewer_month = current_month_key()
+        reviewer_months[reviewer_id] = reviewer_month
+        save_submission_metadata(review_message, submission_meta, "pending")
+        Reviewer.count_increase(
+            reviewer_id, "approve_count", month=reviewer_month
+        )
 
     # get options from all reviewers
     review_options = [
@@ -388,8 +390,10 @@ async def reject_submission(
         await query.answer(strings_reviewer["submission_finalizing"], show_alert=True)
         return
 
+    submission_long_ago = (datetime.now(timezone.utc) - review_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
     operation_key = review_operation_key(review_message, reviewer_id)
-    if reviewer_id in submission_meta["reviewer"]:
+    already_voted = reviewer_id in submission_meta["reviewer"]
+    if already_voted:
         if not IdempotencyRecord.get(operation_key):
             if IdempotencyRecord.claim(
                 operation_key,
@@ -397,22 +401,17 @@ async def reject_submission(
                 str(submission_meta["reviewer"][reviewer_id][2]),
             ):
                 IdempotencyRecord.complete(operation_key)
-        await query_decision(update, context)
-        return
-    if not IdempotencyRecord.claim_review(operation_key, str(action)):
+        if action != ReviewChoice.REJECT_DUPLICATE and (
+            submission_meta["reviewer"][reviewer_id][2] != action or not submission_long_ago
+        ):
+            await query_decision(update, context)
+            return
+    elif not IdempotencyRecord.claim_review(operation_key, str(action)):
         await query.answer(strings_reviewer["review_processed"], show_alert=True)
         return
 
-    submission_long_ago = (datetime.now(timezone.utc) - update.effective_message.date > timedelta(minutes=TG_TIMEOUT_SINGLEREVIEW))
     # if REJECT_DUPLICATE, only one reviewer is enough
     if action == ReviewChoice.REJECT_DUPLICATE:
-        submission_meta["reviewer"][reviewer_id] = [
-            reviewer_username,
-            reviewer_fullname,
-            action,
-        ]
-        reviewer_month = current_month_key()
-        reviewer_months[reviewer_id] = reviewer_month
         finalization_key = finalize_operation_key(review_message)
         if not IdempotencyRecord.claim(
             finalization_key, "review_finalize", str(action)
@@ -422,6 +421,18 @@ async def reject_submission(
                 strings_reviewer["submission_finalizing"], show_alert=True
             )
             return
+        # Adjust the old vote only after acquiring the finalization claim.
+        same_vote = already_voted and submission_meta["reviewer"][reviewer_id][2] == action
+        if already_voted and not same_vote:
+            submission_meta, _ = remove_decision(submission_meta, reviewer_id)
+        if not same_vote:
+            submission_meta["reviewer"][reviewer_id] = [
+                reviewer_username,
+                reviewer_fullname,
+                action,
+            ]
+            reviewer_month = current_month_key()
+            reviewer_months[reviewer_id] = reviewer_month
         await query.answer(strings_reviewer["rejected_success"])
         # send the submission to rejected channel
         await send_to_rejected_channel(
@@ -438,9 +449,10 @@ async def reject_submission(
             month=result_month,
         )
         # increase reviewer count
-        Reviewer.count_increase(
-            reviewer_id, "reject_count", month=reviewer_month
-        )
+        if not same_vote:
+            Reviewer.count_increase(
+                reviewer_id, "reject_count", month=reviewer_month
+            )
         for reviewer_id in submission_meta["reviewer"]:
             if submission_meta["reviewer"][reviewer_id][2] in [
                 ReviewChoice.SFW,
@@ -456,19 +468,18 @@ async def reject_submission(
         IdempotencyRecord.complete(operation_key)
         IdempotencyRecord.complete(finalization_key)
         return
-    # else if the reviewer has not approved or rejected the submission
-    submission_meta["reviewer"][reviewer_id] = [
-        reviewer_username,
-        reviewer_fullname,
-        action,
-    ]
-    reviewer_month = current_month_key()
-    reviewer_months[reviewer_id] = reviewer_month
-    save_submission_metadata(review_message, submission_meta, "pending")
-    # increase reviewer reject count
-    Reviewer.count_increase(
-        reviewer_id, "reject_count", month=reviewer_month
-    )
+    if not already_voted:
+        submission_meta["reviewer"][reviewer_id] = [
+            reviewer_username,
+            reviewer_fullname,
+            action,
+        ]
+        reviewer_month = current_month_key()
+        reviewer_months[reviewer_id] = reviewer_month
+        save_submission_metadata(review_message, submission_meta, "pending")
+        Reviewer.count_increase(
+            reviewer_id, "reject_count", month=reviewer_month
+        )
     # get options from all reviewers
     review_options = [
         reviewer[2] for reviewer in submission_meta["reviewer"].values()
