@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes, MessageHandler, filters
+from telegram.helpers import escape_markdown
 
 from src.database.operations import IdempotencyRecord, Reviewer, Submitter, current_month_key
 from src.config.settings import (
@@ -35,6 +36,15 @@ from src.common.utils import send_result_to_submitter, send_submission
 from src.strings import channel as strings_channel
 from src.strings import reviewer as strings_reviewer
 from src.strings import submitter as strings_submitter
+
+
+def submission_date_footer(review_message):
+    if datetime.now(timezone.utc) - review_message.date <= timedelta(days=7):
+        return ""
+    date = review_message.date.astimezone().strftime("%Y/%m/%d")
+    return "\n\n" + escape_markdown(
+        strings_channel["submission_date"].format(date=date), version=2
+    )
 
 
 def review_operation_key(review_message, reviewer_id):
@@ -165,6 +175,7 @@ async def approve_submission(
     trigger_coding = False
 
     pending_send_channels = submission_meta["pending_send_channels"].copy()
+    date_footer = submission_date_footer(review_message)
     for index, publish_channel in enumerate(pending_send_channels):
         # if the submission is nsfw
         skip_all = None
@@ -210,6 +221,7 @@ async def approve_submission(
             publish_text += "\n" + tracking_link
         else:
             publish_text += tracking_link
+        publish_text += date_footer
 
         # Send to target
         sent_messages = await send_submission(
@@ -580,6 +592,7 @@ async def force_continue_callback(update, context):
     trigger_coding = False
 
     pending_send_channels = submission_meta["pending_send_channels"].copy()
+    date_footer = submission_date_footer(review_message)
     for index, publish_channel in enumerate(pending_send_channels):
         # if the submission is nsfw
         skip_all = None
@@ -623,6 +636,7 @@ async def force_continue_callback(update, context):
             publish_text += "\n" + tracking_link
         else:
             publish_text += tracking_link
+        publish_text += date_footer
 
         # Send to target
         sent_messages = await send_submission(
@@ -898,6 +912,13 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
         if tracking_meta["pending_send_channels"]:
             print(sent_message_ids)
 
+            # Reuse the footer after the invisible tracking link without storing dates.
+            published_text = message.text or message.caption or ""
+            _, tracking_marker, published_footer = published_text.rpartition("\u200b")
+            date_footer = (
+                escape_markdown(published_footer, version=2) if tracking_marker else ""
+            )
+
             # get options from all reviewers
             review_options = [
                 reviewer[2] for reviewer in tracking_meta["reviewer"].values()
@@ -938,6 +959,7 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
                     publish_text += "\n" + tracking_link
                 else:
                     publish_text += tracking_link
+                publish_text += date_footer
 
                 # Send to target
                 sent_messages = await send_submission(

@@ -92,6 +92,7 @@
     "hourly_limit": "你已用完全部 {max_count} 次投稿次数，请一小时后再试。"
   },
   "channel": {
+    "submission_date": "投稿日期：{date}",
     "next": "跳到下一条",
     "nsfw_warning": "⚠️ #NSFW 提前预警",
     "view": "在频道中查看",
