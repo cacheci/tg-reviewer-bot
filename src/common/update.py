@@ -74,7 +74,7 @@ async def _run_git(*args: str) -> tuple[int, str]:
         stderr=asyncio.subprocess.STDOUT,
     )
     output, _ = await process.communicate()
-    return process.return_code, output.decode(errors="replace").strip()
+    return process.returncode, output.decode(errors="replace").strip()
 
 
 async def _reply_in_chunks(message, text: str, limit: int = 4000) -> None:
