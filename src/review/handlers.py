@@ -212,7 +212,9 @@ async def approve_submission(
                 "review_message_id": review_message.message_id,
             }
         tracking_link = generate_submission_meta_url(
-            tracking_meta, encrypt_salt=TG_METADATA_ENCRYPTION_SECRET
+            tracking_meta,
+            encrypt_salt= TG_METADATA_ENCRYPTION_SECRET,
+            space= "\u200b" if submission_meta["text"] else "\uffa0",
         )
 
         # Generate text
@@ -650,7 +652,9 @@ async def force_continue_callback(update, context):
                 "review_message_id": review_message.message_id,
             }
         tracking_link = generate_submission_meta_url(
-            tracking_meta, encrypt_salt=TG_METADATA_ENCRYPTION_SECRET
+            tracking_meta,
+            encrypt_salt = TG_METADATA_ENCRYPTION_SECRET,
+            space = "\u200b" if submission_meta["text"] else "\uffa0",
         )
 
         # Generate text
@@ -981,7 +985,9 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
 
                 # Generate tracking link with encrypted metadata
                 tracking_link = generate_submission_meta_url(
-                    tracking_meta, encrypt_salt=TG_METADATA_ENCRYPTION_SECRET
+                    tracking_meta,
+                    encrypt_salt=TG_METADATA_ENCRYPTION_SECRET,
+                    space= "\u200b" if tracking_meta["text"] else "\uffa0",
                 )
 
                 # Generate text
@@ -1033,11 +1039,50 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
                 if trigger_coding:
                     break
 
+        primary_channel = str(TG_PUBLISH_CHANNEL[0])[4:] if str(TG_PUBLISH_CHANNEL[0]).startswith("-100") else TG_PUBLISH_CHANNEL[0]
+        primary_message_ids = tracking_meta["sent_msg"].get(TG_PUBLISH_CHANNEL[0])
+        if primary_message_ids and primary_message_ids[0] not in (0, None):
+            inline_keyboard = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            strings_channel["view"],
+                            url=f"https://t.me/c/{primary_channel}/{primary_message_ids[0]}",
+                        ),
+                        InlineKeyboardButton(
+                            strings_channel["view_comments"],
+                            url=f"https://t.me/c/{primary_channel}/{primary_message_ids[0]}?comment=1",
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            strings_reviewer["reply_submitter"],
+                            switch_inline_query_current_chat="/comment ",
+                        ),
+                        InlineKeyboardButton(
+                            strings_reviewer["withdraw_submission"],
+                            callback_data=f"{ReviewChoice.APPROVED_RETRACT}",
+                        ),
+                    ],
+                ]
+            )
+        else:
+            inline_keyboard = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            strings_reviewer["force_continue"], callback_data=f"f_conti"
+                        )
+                    ]
+                ]
+            )
+
         await context.bot.edit_message_text(
             chat_id=TG_REVIEWER_GROUP,
             message_id=tracking_meta["review_message_id"],
             text = generate_submission_meta_string(tracking_meta,long_ago_status=SubmissionStatus.APPROVED),
             parse_mode=ParseMode.MARKDOWN_V2,
+            reply_markup=inline_keyboard,
         )
         save_submission_metadata_with_id(tracking_meta["review_message_id"], tracking_meta, "approved")
     else:

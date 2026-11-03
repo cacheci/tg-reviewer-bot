@@ -839,7 +839,7 @@ def _submission_meta_key(encrypt_salt, salt):
         raise TypeError("encrypt_salt must be a secret string or bytes")
     return Scrypt(salt=salt, length=32, n=2**17, r=8, p=1).derive(password)
 
-def generate_submission_meta_url(meta, encrypt_salt:str):
+def generate_submission_meta_url(meta, encrypt_salt:str, space: str = "\u200b"):
     if not isinstance(meta, dict):
         raise TypeError("meta must be a dictionary")
     payload = pickle.dumps(meta)
@@ -852,7 +852,7 @@ def generate_submission_meta_url(meta, encrypt_salt:str):
         salt + nonce + ciphertext
     ).decode("ascii")
 
-    return f"[\u200b](http://t.me/{token})"
+    return f"[{space}](http://t.me/{token})"
 
 def decrypt_submission_meta_url(meta_url, encrypt_salt):
     token = meta_url
@@ -865,6 +865,9 @@ def decrypt_submission_meta_url(meta_url, encrypt_salt):
 
     salt, nonce, ciphertext = payload[:16], payload[16:28], payload[28:]
     key = _submission_meta_key(encrypt_salt, salt)
-    payload = AESGCM(key).decrypt(nonce, ciphertext, _META_ENCRYPTION_CONTEXT)
+    try:
+        payload = AESGCM(key).decrypt(nonce, ciphertext, _META_ENCRYPTION_CONTEXT)
+    except InvalidTag as exc:
+        raise ValueError("Incorrect secret or tampered submission metadata") from exc
 
     return pickle.loads(payload)
