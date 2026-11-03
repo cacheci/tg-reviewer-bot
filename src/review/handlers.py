@@ -926,6 +926,7 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
         tracking_meta["sent_msg"][current_channel] = sent_message_ids
 
         if is_primary:
+            current_channel_link = str(current_channel)[4:] if str(current_channel).startswith("-100") else current_channel
             await send_result_to_submitter(
                 context = context,
                 submitter_id = tracking_meta["submitter"][0],
@@ -935,11 +936,11 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
                     [
                         [
                             InlineKeyboardButton(
-                                strings_channel["view"], url=f"https://t.me/c/{current_channel}/{sent_message_ids[0]}"
+                                strings_channel["view"], url=f"https://t.me/c/{current_channel_link}/{sent_message_ids[0]}"
                             ),
                             InlineKeyboardButton(
                                 strings_channel["view_comments"],
-                                url=f"https://t.me/c/{current_channel}/{sent_message_ids[0]}?comment=1",
+                                url=f"https://t.me/c/{current_channel_link}/{sent_message_ids[0]}?comment=1",
                             ),
                         ]
                     ]
