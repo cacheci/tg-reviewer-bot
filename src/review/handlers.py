@@ -637,6 +637,8 @@ async def force_continue_callback(update, context):
             append_messages.extend(append_list)
         append_messages_string = "\n".join(append_messages)
 
+        submission_meta["media_count"] = len(submission_meta["media_type_list"])
+
         # Generate tracking link with encrypted metadata
         if "video" in submission_meta["media_type_list"]:
             tracking_meta = {
@@ -1034,7 +1036,8 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
         await context.bot.edit_message_text(
             chat_id=TG_REVIEWER_GROUP,
             message_id=tracking_meta["review_message_id"],
-            text = generate_submission_meta_string(tracking_meta,long_ago_status=SubmissionStatus.APPROVED)
+            text = generate_submission_meta_string(tracking_meta,long_ago_status=SubmissionStatus.APPROVED),
+            parse_mode=ParseMode.MARKDOWN_V2,
         )
         save_submission_metadata_with_id(tracking_meta["review_message_id"], tracking_meta, "approved")
     else:
