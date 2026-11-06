@@ -221,11 +221,11 @@ async def approve_submission(
         publish_text = submission_meta["text"]
         if append_messages_string:
             publish_text += "\n" + append_messages_string
+        publish_text += date_footer
         if publish_text.endswith("||"):
             publish_text += "\n" + tracking_link
         else:
             publish_text += tracking_link
-        publish_text += date_footer
 
         # Send to target
         sent_messages = await send_submission(
@@ -661,11 +661,11 @@ async def force_continue_callback(update, context):
         publish_text = submission_meta["text"]
         if append_messages_string:
             publish_text += "\n" + append_messages_string
+        publish_text += date_footer
         if publish_text.endswith("||"):
             publish_text += "\n" + tracking_link
         else:
             publish_text += tracking_link
-        publish_text += date_footer
 
         # Send to target
         sent_messages = await send_submission(
@@ -995,11 +995,11 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
                 publish_text = tracking_meta["text"]
                 if append_messages_string:
                     publish_text += "\n" + append_messages_string
+                publish_text += date_footer
                 if publish_text.endswith("||"):
                     publish_text += "\n" + tracking_link
                 else:
                     publish_text += tracking_link
-                publish_text += date_footer
 
                 # Send to target
                 sent_messages = await send_submission(
