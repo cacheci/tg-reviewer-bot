@@ -1,4 +1,5 @@
 import os, json, logging
+import tempfile
 from src.strings import others as strings_others
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,8 @@ elif os.path.exists(os.path.expandvars(r"%PROGRAMDATA%\\tg_reviewer_bot\\config.
     data_dir = "%PROGRAMDATA%\\tg_reviewer_bot\\"
 else:
     data_dir = None
+
+CONFIG_FILE = os.path.abspath(os.path.join(data_dir, "config.json")) if data_dir is not None else None
 
 if data_dir is not None:
     try:
@@ -146,3 +149,84 @@ else:
     except KeyError as e:
         logger.exception("Env config error")
         raise
+
+EDITABLE_CONFIG = {
+    "TG_REVIEWONLY": ("TG_REVIEWONLY", bool, None, None),
+    "TG_APPROVE_NUMBER_REQUIRED": ("APPROVE_NUMBER_REQUIRED", int, 1, None),
+    "TG_REJECT_NUMBER_REQUIRED": ("REJECT_NUMBER_REQUIRED", int, 1, None),
+    "TG_TIMEOUT_SINGLEREVIEW": ("TG_TIMEOUT_SINGLEREVIEW", int, 0, None),
+    "TG_TEXT_SPOILER": ("TG_TEXT_SPOILER", bool, None, None),
+    "TG_EXPAND_LENGTH": ("TG_EXPAND_LENGTH", int, 0, None),
+    "TG_SELF_APPROVE": ("TG_SELF_APPROVE", bool, None, None),
+    "TG_REJECT_REASON_USER_LIMIT": ("TG_REJECT_REASON_USER_LIMIT", bool, None, None),
+    "TG_RETRACT_NOTIFY": ("TG_RETRACT_NOTIFY", bool, None, None),
+    "TG_IMAGE_DUPLICATE_CHECK": ("TG_IMAGE_DUPLICATE_CHECK", bool, None, None),
+    "TG_IMAGE_DUPLICATE_DAYS": ("TG_IMAGE_DUPLICATE_DAYS", int, 1, None),
+    "TG_IMAGE_DUPLICATE_THRESHOLD": ("TG_IMAGE_DUPLICATE_THRESHOLD", int, 0, 64),
+}
+CONFIG_ALIASES = {
+    "APPROVE_NUMBER_REQUIRED": "TG_APPROVE_NUMBER_REQUIRED",
+    "REJECT_NUMBER_REQUIRED": "TG_REJECT_NUMBER_REQUIRED",
+    "REJECTION_REASON": "TG_REJECTION_REASON",
+}
+SENSITIVE_CONFIG = {"TG_TOKEN", "TG_DB_URL", "TG_METADATA_ENCRYPTION_SECRET", "TG_CUSTOMAPI"}
+READONLY_CONFIG = (
+    "TG_TOKEN", "TG_BOT_USERNAME", "TG_REVIEWER_GROUP", "TG_PUBLISH_CHANNEL",
+    "TG_METADATA_ENCRYPTION_SECRET", "TG_CUSTOMAPI", "TG_DB_URL", "TG_SUPERADMIN",
+    "TG_REJECTED_CHANNEL", "TG_PUBLISH_CHANNEL_COMMENTAREA",
+    "TG_DEFAULT_MAX_SUBMISSION_PER_HOUR",
+    "TG_REJECTION_REASON",
+)
+
+
+def config_name(name):
+    name = name.upper()
+    return CONFIG_ALIASES.get(name, name)
+
+
+def get_config(name):
+    name = config_name(name)
+    if name in EDITABLE_CONFIG:
+        return globals()[EDITABLE_CONFIG[name][0]]
+    if name in READONLY_CONFIG:
+        return globals()["REJECTION_REASON" if name == "TG_REJECTION_REASON" else name]
+    raise KeyError(name)
+
+
+def parse_config_value(name, raw_value):
+    _, value_type, minimum, maximum = EDITABLE_CONFIG[name]
+    if value_type is bool:
+        if raw_value.lower() not in ("true", "false"):
+            raise ValueError("bool")
+        return raw_value.lower() == "true"
+    value = int(raw_value)
+    if value < minimum or (maximum is not None and value > maximum):
+        raise ValueError("range")
+    return value
+
+
+def set_config(name, value):
+    attribute = EDITABLE_CONFIG[name][0]
+    globals()[attribute] = value
+    if CONFIG_FILE is None:
+        return
+
+    with open(CONFIG_FILE, "r", encoding="utf-8") as file:
+        saved = json.load(file)
+    saved.setdefault("non_required", {})[attribute] = value
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=os.path.dirname(CONFIG_FILE),
+            prefix=".config.", suffix=".tmp", delete=False,
+        ) as file:
+            temp_path = file.name
+            json.dump(saved, file, ensure_ascii=False, indent=2)
+            file.write("\n")
+            file.flush()
+            os.fsync(file.fileno())
+        os.chmod(temp_path, os.stat(CONFIG_FILE).st_mode & 0o777)
+        os.replace(temp_path, CONFIG_FILE)
+    finally:
+        if temp_path is not None and os.path.exists(temp_path):
+            os.unlink(temp_path)

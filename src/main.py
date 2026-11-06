@@ -61,6 +61,7 @@ from src.statistics.handlers import (
 )
 from src.common.utils import PrefixFilter, on_init
 from src.common.update import update_bot
+from src.common.config import config_bot
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -154,6 +155,12 @@ if __name__ == "__main__":
                 track_message,
                 filters=filters.REPLY
                 & filters.Chat(chat_id=int(TG_REVIEWER_GROUP)),
+            ),
+            CommandHandler(
+                "config",
+                config_bot,
+                filters=~filters.UpdateType.EDITED_MESSAGE
+                & filters.ChatType.PRIVATE,
             ),
             CommandHandler(
                 "update",
