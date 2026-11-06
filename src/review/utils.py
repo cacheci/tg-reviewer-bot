@@ -317,7 +317,7 @@ async def append_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     review_message = update.message.reply_to_message
     # if there is not a submission_meta in the review_message
-    if "\u200b" not in review_message.text_markdown_v2_urled:
+    if "\u00ad" not in review_message.text_markdown_v2_urled:
         return
     submission_meta = pickle.loads(
         base64.urlsafe_b64decode(
@@ -350,7 +350,7 @@ async def remove_append_message(
         return
     review_message = update.message.reply_to_message
     # if there is not a submission_meta in the review_message
-    if "\u200b" not in review_message.text:
+    if "\u00ad" not in review_message.text:
         return
     submission_meta = pickle.loads(
         base64.urlsafe_b64decode(
@@ -394,7 +394,7 @@ async def comment_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     review_message = update.message.reply_to_message
     # if there is not a submission_meta in the review_message
-    if "\u200b" not in review_message.text_markdown_v2_urled:
+    if "\u00ad" not in review_message.text_markdown_v2_urled:
         return
     submission_meta = pickle.loads(
         base64.urlsafe_b64decode(
@@ -479,7 +479,7 @@ async def send_custom_rejection_reason(
     review_message = update.message.reply_to_message
 
     # if there is not a submission_meta in the review_message
-    if "\u200b" not in review_message.text_markdown_v2_urled:
+    if "\u00ad" not in review_message.text_markdown_v2_urled:
         return
     submission_meta = pickle.loads(
         base64.urlsafe_b64decode(
@@ -807,7 +807,7 @@ def generate_submission_meta_string(submission_meta, long_ago_status=0):
             tags += f" #USER_{reviewer_id} #REVIEWER_{reviewer_id}"
     tags += f" {status_tag}"
 
-    submission_meta_text = f"[\u200b](http://t.me/{base64.urlsafe_b64encode(pickle.dumps(submission_meta)).decode("ascii")})"
+    submission_meta_text = f"[\u00ad](http://t.me/{base64.urlsafe_b64encode(pickle.dumps(submission_meta)).decode("ascii")})"
     visible_content = (
         status_title
         + "\n\n"
@@ -839,7 +839,7 @@ def _submission_meta_key(encrypt_salt, salt):
         raise TypeError("encrypt_salt must be a secret string or bytes")
     return Scrypt(salt=salt, length=32, n=2**17, r=8, p=1).derive(password)
 
-def generate_submission_meta_url(meta, encrypt_salt:str, space: str = "\u200b"):
+def generate_submission_meta_url(meta, encrypt_salt:str, space: str = "\u00ad"):
     if not isinstance(meta, dict):
         raise TypeError("meta must be a dictionary")
     payload = pickle.dumps(meta)
@@ -856,7 +856,7 @@ def generate_submission_meta_url(meta, encrypt_salt:str, space: str = "\u200b"):
 
 def decrypt_submission_meta_url(meta_url, encrypt_salt):
     token = meta_url
-    if token.startswith("[\u200b](") and token.endswith(")"):
+    if token.startswith("[\u00ad](") and token.endswith(")"):
         token = token[4:-1]
     if token.startswith("http://t.me/"):
         token = token[12:]

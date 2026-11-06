@@ -214,7 +214,7 @@ async def approve_submission(
         tracking_link = generate_submission_meta_url(
             tracking_meta,
             encrypt_salt= TG_METADATA_ENCRYPTION_SECRET,
-            space= "\u200b" if submission_meta["text"] else "\uffa0",
+            space= "\u00ad",
         )
 
         # Generate text
@@ -654,7 +654,7 @@ async def force_continue_callback(update, context):
         tracking_link = generate_submission_meta_url(
             tracking_meta,
             encrypt_salt = TG_METADATA_ENCRYPTION_SECRET,
-            space = "\u200b" if submission_meta["text"] else "\uffa0",
+            space = "\u00ad",
         )
 
         # Generate text
@@ -952,7 +952,7 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
 
             # Reuse the footer after the invisible tracking link without storing dates.
             published_text = message.text or message.caption or ""
-            _, tracking_marker, published_footer = published_text.rpartition("\u200b")
+            _, tracking_marker, published_footer = published_text.rpartition("\u00ad")
             date_footer = (
                 escape_markdown(published_footer, version=2) if tracking_marker else ""
             )
@@ -988,7 +988,7 @@ async def channel_trace_to_continue(update: Update, context: ContextTypes.DEFAUL
                 tracking_link = generate_submission_meta_url(
                     tracking_meta,
                     encrypt_salt=TG_METADATA_ENCRYPTION_SECRET,
-                    space= "\u200b" if tracking_meta["text"] else "\uffa0",
+                    space= "\u00ad",
                 )
 
                 # Generate text
